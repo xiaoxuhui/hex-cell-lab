@@ -1,10 +1,10 @@
 (function(root,factory){const api=factory(typeof module==='object'&&module.exports?require('./expression.js'):root.CellExpression);if(typeof module==='object'&&module.exports)module.exports=api;else root.CellCore=api;})(typeof globalThis!=='undefined'?globalThis:this,function(Expression){
   'use strict';
   const DIRECTIONS=[[0,-1],[1,-1],[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1]];
-  function compile(spec){
+  function compile(spec,options){
     if(!spec||typeof spec.text!=='string'||spec.text.length>65536)throw Error('规则不能为空，且不能超过 65536 字符');
     const format=spec.format,text=spec.text.trim();
-    if(format==='expression')return {format,text,count:null,labels:['0','1','2','3'],evaluate:Expression.compile(text)};
+    if(format==='expression')return {format,text,count:null,labels:['0','1','2','3'],evaluate:Expression.compile(text,options)};
     if(format==='bs'||format==='sbc'){
       const clean=text.toUpperCase().replace(/\s/g,''),m=clean.match(format==='bs'?/^B([0-8]*)\/S([0-8]*)$/:/^S([0-8]*)\/B([0-8]*)\/C(\d+)$/);
       if(!m)throw Error(format==='bs'?'格式示例：B3/S23；邻居数为 0–8':'格式示例：S23/B2/C2；S、B 为 0–8 的邻居数');

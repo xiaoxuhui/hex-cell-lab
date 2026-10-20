@@ -4,7 +4,7 @@
   const C=window.CellCore,P=window.CellPresets,$=id=>document.getElementById(id),canvas=$('board'),ctx=canvas.getContext('2d');
   const KEY='cell-lab-v1',colors=['#1a2d22','#c3e98e','#e9b966','#82b9ae','#ca93c1','#91a6db','#e18c78','#e4d983'];
   const drafts={bs:'B3/S23',sbc:'S23/B2/C2',table:'1,0,1,0,1,0,1,*,1,1',expression:'n == 3 || (E == 1 && n == 2)'};
-  const presets={life:['bs','B3/S23'],seeds:['bs','B2/S'],brain:['sbc','S/B2/C3'],'user-sbc':['sbc','S23/B2/C2'],'user-table':['table','1,0,1,0,1,0,1,*,1,1'],signal:['table','0,火,*,*,*,*,*,*,*,火\n火,*,*,*,*,*,*,*,*,水\n水,*,*,*,*,*,*,*,*,0'],'expression-life':['expression','n == 3 || (E == 1 && n == 2)'],'expression-cycle':['expression','(E + B + H) % 3'],wireworld:['expression',P.wireworld]};
+  const presets={life:['bs','B3/S23'],seeds:['bs','B2/S'],brain:['sbc','S/B2/C3'],'user-sbc':['sbc','S23/B2/C2'],'user-table':['table','1,0,1,0,1,0,1,*,1,1'],signal:['table','0,火,*,*,*,*,*,*,*,火\n火,*,*,*,*,*,*,*,*,水\n水,*,*,*,*,*,*,*,*,0'],'expression-life':['expression','n == 3 || (E == 1 && n == 2)'],'expression-cycle':['expression','(E + B + H) % 3'],'expression-random':['expression','random([0, 1, 2, 3])'],wireworld:['expression',P.wireworld]};
   let format='bs',rule=C.compile({format,text:drafts.bs}),width=72,height=48,grid=Array(width*height).fill(0),generation=0,boundary='wrap';
   let running=false,timer=null,brush=1,erasing=false,inspecting=false,zoom=1,showGrid=true,view={},drawing=false,lastCell=null,hoveredCell=null,strokeValue=1,history=[],saveTimer=null,dirty=false;
   const color=value=>{if(P.isWireworld(rule)&&P.colors[value])return P.colors[value];if(Number.isInteger(value)&&value>=0&&value<colors.length)return colors[value];let hash=0;for(const ch of String(value))hash=(hash*31+ch.charCodeAt(0))|0;return `hsl(${Math.abs(hash)%360} 48% 68%)`;};
@@ -36,7 +36,7 @@
   function markDirty(){dirty=true;$('draft-status').textContent='尚未应用';$('rule-error').hidden=true;syncDemo();}
   function applied(){dirty=false;$('draft-status').textContent='已应用';$('rule-error').hidden=true;syncDemo();syncPreset();}
   function applyRule(){try{
-    const next=C.compile(spec());let changed=0,textStates=0;
+    const settings=spec(),next=C.compile(settings);let changed=0,textStates=0;
     const converted=grid.map(v=>{
       if(next.format==='expression'){
         if(rule.format==='expression')return v;
@@ -45,7 +45,7 @@
       const name=rule.format==='expression'?String(v):rule.labels[v],index=next.labels.indexOf(name);
       if(index<0){changed++;return 0;}return index;
     });
-    if(next.format==='expression')C.step(converted,width,height,next,boundary);
+    if(next.format==='expression')C.step(converted,width,height,C.compile(settings,{random:()=>0}),boundary);
     setRunning(false);pushHistory();grid=converted;rule=next;validateBrush();drafts[format]=$('rule-text').value;applied();palette();refresh();
     notice('已应用'+(changed?'；'+changed+' 个未定义状态已归零。':textStates?'；文字状态已按调色板序号转换为数值。':'，下一代将使用这套规则。'));return true;
   }catch(e){ruleError(e.message);return false;}}

@@ -1,11 +1,11 @@
 {
   "name": "cell-lab",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "private": true,
   "description": "元胞自动机游戏，支持逻辑与数值表达式、B/S、SBC 与通配规则",
   "scripts": {
     "test": "node --test tests/*.test.cjs",
-    "test:browser": "node tests/browser.cjs && node tests/expression-browser.cjs && node tests/wireworld-browser.cjs",
+    "test:browser": "node tests/browser.cjs && node tests/expression-browser.cjs && node tests/wireworld-browser.cjs && node tests/random-browser.cjs",
     "build": "node scripts/build.cjs",
     "start": "node scripts/serve.cjs"
   },

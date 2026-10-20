@@ -1,6 +1,6 @@
 # 元胞实验室 · CELL LAB
 
-八邻域元胞自动机游戏，版本 1.2.0。打开 `dist/index.html` 即可离线使用。解析器已随页面附带，无需联网或安装运行时依赖。
+八邻域元胞自动机游戏，版本 1.3.0。打开 `dist/index.html` 即可离线使用。解析器已随页面附带，无需联网或安装运行时依赖。
 
 ## 使用
 
@@ -32,6 +32,19 @@ n == 3 || (E == 1 && n == 2)
 ```
 
 n 是八邻居中状态等于 1 的个数；sum 是八邻居数值之和，不含 E。仅输入 A–I、n、sum 这些变量名；可用可选前缀 `next =`。支持算术、比较、逻辑、位运算、条件运算和 min/max/abs/floor/ceil/round/sqrt/pow。表达式中 `*` 表示乘法。
+
+### 随机选择列表
+
+```
+random([0, 1, 2, 3])
+random([A, E, I])
+E == 0 ? random([0, 1]) : E
+random([-0.5, E + 1, true])
+```
+
+每个元胞每次更新独立抽取，列表各项等概率；重复项会提高对应值出现的概率，例如 `[0,0,0,1]` 有 3/4 机会选到 0。列表允许 1–256 项，选中后才计算该项，逻辑/条件的未执行分支不抽样。列表只能作为 random 的唯一参数。非有限结果仍会暂停并保留上一代。
+
+从预设选择“表达式 · 随机列表”即可填入示例。应用规则时仅做固定预览，不更改棋盘，也不消耗正式随机序列。导出保留表达式和当前棋盘；撤销后重新运行、导入后继续运行都会重新随机选择。
 
 “数值画笔”可绘制任意有限数，点击“查看”后点按棋盘可读取实际状态。公式产生无穷或 NaN 时自动暂停并保留上一代。采用 JavaScript 浮点数和 32 位整数位运算语义；最多 8192 字符、1024 语法节点、512 层运算、64 层括号。通过 [jsep](https://github.com/EricSmekens/jsep) 1.4.0 解析后解释白名单节点，不直接执行输入代码；MIT 许可证位于 vendor/jsep-1.4.0/LICENSE。
 
@@ -66,6 +79,7 @@ node --test tests/*.test.cjs
 node tests/browser.cjs
 node tests/expression-browser.cjs
 node tests/wireworld-browser.cjs
+node tests/random-browser.cjs
 node scripts/serve.cjs
 ```
 

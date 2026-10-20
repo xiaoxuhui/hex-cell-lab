@@ -18,8 +18,9 @@
     '&':(a,b)=>a&b,'|':(a,b)=>a|b,'^':(a,b)=>a^b,'<<':(a,b)=>a<<b,'>>':(a,b)=>a>>b,'>>>':(a,b)=>a>>>b
   };
   const functions={min:[Math.min,1,32],max:[Math.max,1,32],abs:[Math.abs,1,1],floor:[Math.floor,1,1],ceil:[Math.ceil,1,1],round:[Math.round,1,1],sqrt:[Math.sqrt,1,1],pow:[Math.pow,2,2]};
-  function compile(text){
+  function compile(text,{random=()=>Math.random()}={}){
     if(typeof text!=='string'||!text.trim()||text.length>8192)throw Error('表达式需有 1–8192 个字符');
+    if(typeof random!=='function')throw Error('随机源必须是函数');
     const source=text.replace(/[（]/g,'(').replace(/[）]/g,')').replace(/^\s*next\s*=(?!=)\s*/,'');
     let nesting=0;
     for(const ch of source){if(ch==='('&&++nesting>64)throw Error('括号嵌套最多 64 层');if(ch===')')nesting--;}
@@ -51,7 +52,15 @@
           const condition=child(node.test),yes=child(node.consequent),no=child(node.alternate);return n=>condition(n)?yes(n):no(n);
         }
         case 'CallExpression': {
-          if(node.callee.type!=='Identifier'||!Object.hasOwn(functions,node.callee.name))throw Error('只支持 min/max/abs/floor/ceil/round/sqrt/pow 函数');
+          if(node.callee.type==='Identifier'&&node.callee.name==='random'){
+            if(node.arguments.length!==1||node.arguments[0].type!=='ArrayExpression')throw Error('random 需要一个列表参数，例如 random([0,1,2,3])');
+            const items=node.arguments[0].elements;
+            if(items.length<1||items.length>256)throw Error('随机列表需有 1–256 项');
+            if(items.some(item=>!item))throw Error('随机列表中不允许留空项');
+            const choices=items.map(child);
+            return n=>{const sample=random();if(typeof sample!=='number'||!Number.isFinite(sample)||sample<0||sample>=1)throw Error('随机源必须返回 0（含）到 1（不含）的数字');return choices[Math.floor(sample*choices.length)](n);};
+          }
+          if(node.callee.type!=='Identifier'||!Object.hasOwn(functions,node.callee.name))throw Error('只支持 random/min/max/abs/floor/ceil/round/sqrt/pow 函数');
           const [fn,min,max]=functions[node.callee.name],args=node.arguments.map(child);
           if(args.length<min||args.length>max)throw Error(node.callee.name+' 参数数量应为 '+(min===max?min:min+'–'+max));
           return n=>fn(...args.map(arg=>arg(n)));
