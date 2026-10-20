@@ -55,7 +55,7 @@
   canvas.addEventListener('pointermove',e=>{const p=locate(e);showCell(p);if(drawing)paintTo(p);});
   const endStroke=()=>{drawing=false;lastCell=null;};canvas.addEventListener('pointerup',endStroke);canvas.addEventListener('pointercancel',endStroke);canvas.addEventListener('lostpointercapture',endStroke);canvas.addEventListener('contextmenu',e=>e.preventDefault());
   $('play').onclick=()=>setRunning(!running);$('step').onclick=()=>evolve(true);
-  $('undo').onclick=()=>{if(history.length)restore(history.pop(),true);};
+  $('undo').onclick=()=>{if(history.length){restore(history.pop(),true);notice('已撤销上次操作。');}};
   $('speed').oninput=()=>{$('speed-value').textContent=$('speed').value+' 代/秒';};
   $('random').onclick=()=>{setRunning(false);pushHistory();grid=grid.map(()=>Math.random()<.24?1:0);generation=0;refresh();notice('已随机播种，点击开始演化。');};
   $('clear').onclick=()=>{setRunning(false);pushHistory();grid.fill(0);generation=0;refresh();notice('棋盘已清空，可以重新绘制。');};
