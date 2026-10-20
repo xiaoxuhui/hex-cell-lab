@@ -6,7 +6,7 @@
   const drafts={bs:'B3/S23',sbc:'S23/B2/C2',table:'1,0,1,0,1,0,1,*,1,1',expression:'n == 3 || (E == 1 && n == 2)'};
   const presets={life:['bs','B3/S23'],seeds:['bs','B2/S'],brain:['sbc','S/B2/C3'],'user-sbc':['sbc','S23/B2/C2'],'user-table':['table','1,0,1,0,1,0,1,*,1,1'],signal:['table','0,火,*,*,*,*,*,*,*,火\n火,*,*,*,*,*,*,*,*,水\n水,*,*,*,*,*,*,*,*,0'],'expression-life':['expression','n == 3 || (E == 1 && n == 2)'],'expression-cycle':['expression','(E + B + H) % 3'],wireworld:['expression',P.wireworld]};
   let format='bs',rule=C.compile({format,text:drafts.bs}),width=72,height=48,grid=Array(width*height).fill(0),generation=0,boundary='wrap';
-  let running=false,timer=null,brush=1,erasing=false,inspecting=false,zoom=1,showGrid=true,view={},drawing=false,lastCell=null,strokeValue=1,history=[],saveTimer=null,dirty=false;
+  let running=false,timer=null,brush=1,erasing=false,inspecting=false,zoom=1,showGrid=true,view={},drawing=false,lastCell=null,hoveredCell=null,strokeValue=1,history=[],saveTimer=null,dirty=false;
   const color=value=>{if(P.isWireworld(rule)&&P.colors[value])return P.colors[value];if(Number.isInteger(value)&&value>=0&&value<colors.length)return colors[value];let hash=0;for(const ch of String(value))hash=(hash*31+ch.charCodeAt(0))|0;return `hsl(${Math.abs(hash)%360} 48% 68%)`;};
   const label=value=>P.isWireworld(rule)&&P.names[value]?value+' · '+P.names[value]:rule.format==='expression'?String(value):rule.labels[value];
   function syncPreset(){const match=Object.entries(presets).find(([,v])=>v[0]===rule.format&&v[1]===rule.text);$('preset').value=match?match[0]:'';}
@@ -25,7 +25,7 @@
     for(let y=0;y<height;y++)for(let x=0;x<width;x++){const value=grid[y*width+x],px=ox+x*size,py=oy+y*size;if(px+size<0||py+size<0||px>r.width||py>r.height)continue;if(value){ctx.fillStyle=color(value);ctx.fillRect(px+.6,py+.6,Math.max(.5,size-1.2),Math.max(.5,size-1.2));}else if(showGrid&&size>=4){ctx.fillStyle='#52704790';ctx.fillRect(px+size/2-.5,py+size/2-.5,1,1);}}
     if(showGrid&&size>=11){ctx.strokeStyle='#43634435';ctx.lineWidth=.5;ctx.beginPath();for(let x=0;x<=width;x++){ctx.moveTo(ox+x*size,oy);ctx.lineTo(ox+x*size,oy+height*size);}for(let y=0;y<=height;y++){ctx.moveTo(ox,oy+y*size);ctx.lineTo(ox+width*size,oy+y*size);}ctx.stroke();}
   }
-  function refresh(){updateStats();draw();saveSoon();}
+  function refresh(){updateStats();draw();if(hoveredCell)showCell(hoveredCell);saveSoon();}
   function setRunning(value){if(value===running)return;running=value;clearTimeout(timer);$('play').querySelector('span').textContent=value?'暂停演化':'开始演化';$('play').firstChild.textContent=value?'Ⅱ ':'▶ ';$('run-status').textContent=value?'正在生长':'等待生长';$('status-dot').classList.toggle('running',value);$('step').disabled=value;if(value){pushHistory();tick();}}
   function evolve(remember=false){try{const next=C.step(grid,width,height,rule,boundary);if(remember)pushHistory();grid=next;generation++;refresh();return true;}catch(e){setRunning(false);ruleError(e.message);notice('演化已暂停，棋盘与代数保留在最后成功的一代。');return false;}}
   function tick(){if(!running)return;if(evolve()&&running)timer=setTimeout(tick,1000/Number($('speed').value));}
@@ -52,7 +52,7 @@
   function restore(raw,retainHistory=false){const s=C.validateSave(raw);setRunning(false);if(!retainHistory)history=[];width=s.width;height=s.height;grid=s.grid;generation=s.generation;boundary=s.boundary;rule=C.compile(s.rule);drafts[rule.format]=rule.text;$('state-labels').value=rule.labels.join(',');$('fallback').value=rule.fallback||'keep';setFormat(rule.format,false);$('boundary').value=boundary;validateBrush();applied();palette();$('undo').disabled=!history.length;refresh();}
   function locate(e){const r=canvas.getBoundingClientRect();return {x:Math.floor((e.clientX-r.left-view.ox)/view.size),y:Math.floor((e.clientY-r.top-view.oy)/view.size)};}
   function paintCell(x,y){if(x>=0&&x<width&&y>=0&&y<height)grid[y*width+x]=strokeValue;}
-  function showCell(p){const valid=p.x>=0&&p.x<width&&p.y>=0&&p.y<height;$('coordinate').textContent=valid?'x '+p.x+' · y '+p.y+' · 状态 '+label(grid[p.y*width+p.x]):'x — · y —';}
+  function showCell(p){hoveredCell=p;const valid=p.x>=0&&p.x<width&&p.y>=0&&p.y<height;$('coordinate').textContent=valid?'x '+p.x+' · y '+p.y+' · 状态 '+label(grid[p.y*width+p.x]):'x — · y —';}
   function paintTo(point){if(lastCell){let {x,y}=lastCell,dx=Math.abs(point.x-x),dy=-Math.abs(point.y-y),sx=x<point.x?1:-1,sy=y<point.y?1:-1,err=dx+dy;for(let n=0;n<1000;n++){paintCell(x,y);if(x===point.x&&y===point.y)break;const e=2*err;if(e>=dy){err+=dy;x+=sx;}if(e<=dx){err+=dx;y+=sy;}}}else paintCell(point.x,point.y);lastCell=point;refresh();showCell(point);}
   canvas.addEventListener('pointerdown',e=>{if(e.button!==0&&e.button!==2)return;const p=locate(e);if(p.x<0||p.y<0||p.x>=width||p.y>=height)return;e.preventDefault();if(inspecting&&e.button===0){showCell(p);return;}setRunning(false);pushHistory();drawing=true;lastCell=null;strokeValue=e.button===2||erasing?0:brush;canvas.setPointerCapture(e.pointerId);paintTo(p);});
   canvas.addEventListener('pointermove',e=>{const p=locate(e);showCell(p);if(drawing)paintTo(p);});
