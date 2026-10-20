@@ -1,0 +1,5 @@
+const {test}=require('node:test'),a=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const root=path.resolve(__dirname,'..'),html=fs.readFileSync(path.join(root,'index.html'),'utf8'),pkg=require('../package.json');
+test('static assets use relative paths and match build output',()=>{for(const m of html.matchAll(/(?:src|href)="([^"]+)"/g)){const p=m[1];if(p.startsWith('data:'))continue;a.ok(!p.startsWith('/'),p);if(p==='./')continue;a.ok(fs.existsSync(path.join(root,p)),p);}for(const p of ['index.html','src/core.js','src/app.js','styles/main.css'])a.equal(fs.readFileSync(path.join(root,p),'utf8'),fs.readFileSync(path.join(root,'dist',p),'utf8'),p);});
+test('version agrees in package page and changelog',()=>{a.ok(html.includes('v'+pkg.version));a.ok(fs.readFileSync(path.join(root,'CHANGELOG.md'),'utf8').includes(pkg.version));});
+test('standalone port avoids other games',()=>{const server=fs.readFileSync(path.join(root,'scripts/serve.cjs'),'utf8');a.ok(server.includes('4189'));a.ok(!server.includes('4173'));});

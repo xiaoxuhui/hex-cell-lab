@@ -16,7 +16,7 @@
   function palette(){const p=$('palette');p.replaceChildren();for(let i=0;i<rule.count;i++){const b=document.createElement('button');b.className='swatch';b.style.setProperty('--swatch',color(i));b.textContent=rule.labels[i];b.title='绘制状态 '+rule.labels[i];b.setAttribute('aria-label','绘制状态 '+rule.labels[i]);b.setAttribute('aria-pressed',String(!erasing&&i===brush));b.onclick=()=>{brush=i;erasing=false;palette();};p.append(b);}$('eraser').setAttribute('aria-pressed',String(erasing));}
   function draw(){const r=canvas.getBoundingClientRect();if(!r.width||!r.height)return;const dpr=Math.min(window.devicePixelRatio||1,3),w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle='#17281f';ctx.fillRect(0,0,r.width,r.height);
     const size=Math.min((r.width-28)/width,(r.height-48)/height)*zoom,ox=(r.width-size*width)/2,oy=(r.height-size*height)/2;view={size,ox,oy};
-    for(let y=0;y<height;y++)for(let x=0;x<width;x++){const value=grid[y*width+x],px=ox+x*size,py=oy+y*size;if(px+size<0||py+size<0||px>r.width||py>r.height)continue;if(value){ctx.fillStyle=color(value);ctx.fillRect(px+.6,py+.6,Math.max(.5,size-1.2),Math.max(.5,size-1.2));}else if(showGrid&&size>=4){ctx.fillStyle='#344c3440';ctx.fillRect(px+size/2-.5,py+size/2-.5,1,1);}}
+    for(let y=0;y<height;y++)for(let x=0;x<width;x++){const value=grid[y*width+x],px=ox+x*size,py=oy+y*size;if(px+size<0||py+size<0||px>r.width||py>r.height)continue;if(value){ctx.fillStyle=color(value);ctx.fillRect(px+.6,py+.6,Math.max(.5,size-1.2),Math.max(.5,size-1.2));}else if(showGrid&&size>=4){ctx.fillStyle='#52704790';ctx.fillRect(px+size/2-.5,py+size/2-.5,1,1);}}
     if(showGrid&&size>=11){ctx.strokeStyle='#43634435';ctx.lineWidth=.5;ctx.beginPath();for(let x=0;x<=width;x++){ctx.moveTo(ox+x*size,oy);ctx.lineTo(ox+x*size,oy+height*size);}for(let y=0;y<=height;y++){ctx.moveTo(ox,oy+y*size);ctx.lineTo(ox+width*size,oy+y*size);}ctx.stroke();}
   }
   function refresh(){updateStats();draw();saveSoon();}
@@ -53,7 +53,11 @@
   document.addEventListener('visibilitychange',()=>{if(document.hidden)setRunning(false);});window.addEventListener('pagehide',()=>{try{localStorage.setItem(KEY,JSON.stringify(snapshot()));}catch{/* Existing save status already exposes storage availability. */}});
   new ResizeObserver(draw).observe($('canvas-wrap'));
   // A deterministic seed keeps the first visit interesting and reproducible.
-  for(const [dx,dy] of [[1,0],[2,1],[0,2],[1,2],[2,2],[-12,-4],[-11,-4],[-10,-4],[-10,-5],[-11,-6],[12,5],[13,5],[12,6],[13,6]])grid[(24+dy)*width+36+dx]=1;
+  let seed=7289;
+  for(let y=8;y<40;y++)for(let x=17;x<55;x++){
+    seed=(seed*16807)%2147483647;
+    if(((x-36)/18)**2+((y-24)/15)**2<1&&seed/2147483647<.32)grid[y*width+x]=1;
+  }
   try{const raw=localStorage.getItem(KEY);if(raw)restore(JSON.parse(raw));else{palette();refresh();}}catch{palette();refresh();notice('本地存档无效，已载入初始种子。');}
   // Read-only state and coordinate access make browser acceptance checks reliable.
   window.CellLab={getState:()=>snapshot(),getView:()=>({...view,running,brush,zoom}),getDraft:()=>spec()};
