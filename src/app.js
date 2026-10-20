@@ -1,13 +1,16 @@
 /* Canvas rendering and UI; all evolution and validation live in core.js. */
 (function(){
   'use strict';
-  const C=window.CellCore,$=id=>document.getElementById(id),canvas=$('board'),ctx=canvas.getContext('2d');
+  const C=window.CellCore,P=window.CellPresets,$=id=>document.getElementById(id),canvas=$('board'),ctx=canvas.getContext('2d');
   const KEY='cell-lab-v1',colors=['#1a2d22','#c3e98e','#e9b966','#82b9ae','#ca93c1','#91a6db','#e18c78','#e4d983'];
   const drafts={bs:'B3/S23',sbc:'S23/B2/C2',table:'1,0,1,0,1,0,1,*,1,1',expression:'n == 3 || (E == 1 && n == 2)'};
+  const presets={life:['bs','B3/S23'],seeds:['bs','B2/S'],brain:['sbc','S/B2/C3'],'user-sbc':['sbc','S23/B2/C2'],'user-table':['table','1,0,1,0,1,0,1,*,1,1'],signal:['table','0,火,*,*,*,*,*,*,*,火\n火,*,*,*,*,*,*,*,*,水\n水,*,*,*,*,*,*,*,*,0'],'expression-life':['expression','n == 3 || (E == 1 && n == 2)'],'expression-cycle':['expression','(E + B + H) % 3'],wireworld:['expression',P.wireworld]};
   let format='bs',rule=C.compile({format,text:drafts.bs}),width=72,height=48,grid=Array(width*height).fill(0),generation=0,boundary='wrap';
   let running=false,timer=null,brush=1,erasing=false,inspecting=false,zoom=1,showGrid=true,view={},drawing=false,lastCell=null,strokeValue=1,history=[],saveTimer=null,dirty=false;
-  const color=value=>{if(Number.isInteger(value)&&value>=0&&value<colors.length)return colors[value];let hash=0;for(const ch of String(value))hash=(hash*31+ch.charCodeAt(0))|0;return `hsl(${Math.abs(hash)%360} 48% 68%)`;};
-  const label=value=>rule.format==='expression'?String(value):rule.labels[value];
+  const color=value=>{if(P.isWireworld(rule)&&P.colors[value])return P.colors[value];if(Number.isInteger(value)&&value>=0&&value<colors.length)return colors[value];let hash=0;for(const ch of String(value))hash=(hash*31+ch.charCodeAt(0))|0;return `hsl(${Math.abs(hash)%360} 48% 68%)`;};
+  const label=value=>P.isWireworld(rule)&&P.names[value]?value+' · '+P.names[value]:rule.format==='expression'?String(value):rule.labels[value];
+  function syncPreset(){const match=Object.entries(presets).find(([,v])=>v[0]===rule.format&&v[1]===rule.text);$('preset').value=match?match[0]:'';}
+  function syncDemo(){ $('wireworld-card').hidden=!(format==='expression'&&$('rule-text').value.trim()===P.wireworld); }
   function ruleError(message){$('rule-error').textContent=message;$('rule-error').hidden=false;}
   function validateBrush(){if(rule.format!=='expression'&&(!Number.isInteger(brush)||brush<0||brush>=rule.count))brush=1;$('numeric-brush').value=String(brush);}
   function spec(){return {format,text:$('rule-text').value,labels:$('state-labels').value,fallback:$('fallback').value};}
@@ -15,7 +18,7 @@
   function pushHistory(){history.push(snapshot());if(history.length>30)history.shift();$('undo').disabled=false;}
   function saveSoon(){clearTimeout(saveTimer);saveTimer=setTimeout(()=>{try{localStorage.setItem(KEY,JSON.stringify(snapshot()));$('save-status').textContent='已自动保存在此浏览器';}catch{$('save-status').textContent='自动保存不可用，请导出备份';}},250);}
   function notice(text){$('apply-note').textContent=text;}
-  function updateStats(){const n=grid.reduce((a,b)=>a+(b!==0),0);$('generation').textContent=generation.toLocaleString();$('population').textContent=n.toLocaleString();$('density').textContent=(100*n/grid.length).toFixed(1)+'%';$('active-rule').textContent=rule.format==='expression'?'表达式':rule.format==='table'?rule.rules.length+' 条规则':rule.text.toUpperCase().replace(/\s/g,'');$('active-rule').title=rule.text;$('rule-kind').textContent=rule.format==='expression'?'布尔 / 数值':(rule.format==='table'?'自定义':rule.format==='bs'?'B/S':'SBC')+' · '+rule.count+' 状态';$('board-size').textContent=width+' × '+height;}
+  function updateStats(){const n=grid.reduce((a,b)=>a+(b!==0),0);$('generation').textContent=generation.toLocaleString();$('population').textContent=n.toLocaleString();$('density').textContent=(100*n/grid.length).toFixed(1)+'%';$('active-rule').textContent=P.isWireworld(rule)?'电线世界':rule.format==='expression'?'表达式':rule.format==='table'?rule.rules.length+' 条规则':rule.text.toUpperCase().replace(/\s/g,'');$('active-rule').title=rule.text;$('rule-kind').textContent=P.isWireworld(rule)?'表达式 · 4 状态':rule.format==='expression'?'布尔 / 数值':(rule.format==='table'?'自定义':rule.format==='bs'?'B/S':'SBC')+' · '+rule.count+' 状态';$('board-size').textContent=width+' × '+height;}
   function palette(){const p=$('palette'),numeric=rule.format==='expression';p.replaceChildren();const values=numeric?[...new Set([0,1,2,3,brush])]:Array.from({length:rule.count},(_,i)=>i);for(const value of values){const b=document.createElement('button');b.className='swatch';b.style.setProperty('--swatch',color(value));b.textContent=label(value);b.title='绘制状态 '+label(value);b.setAttribute('aria-label','绘制状态 '+label(value));b.setAttribute('aria-pressed',String(!inspecting&&!erasing&&value===brush));b.onclick=()=>{brush=value;erasing=false;inspecting=false;$('numeric-brush').value=String(value);palette();};p.append(b);}$('eraser').setAttribute('aria-pressed',String(erasing));$('inspect').setAttribute('aria-pressed',String(inspecting));$('numeric-tools').hidden=!numeric;}
   function draw(){const r=canvas.getBoundingClientRect();if(!r.width||!r.height)return;const dpr=Math.min(window.devicePixelRatio||1,3),w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle='#17281f';ctx.fillRect(0,0,r.width,r.height);
     const size=Math.min((r.width-28)/width,(r.height-48)/height)*zoom,ox=(r.width-size*width)/2,oy=(r.height-size*height)/2;view={size,ox,oy};
@@ -30,8 +33,8 @@
     $('rule-description').textContent=next==='bs'?'B 指出生，S 指存活。B3/S23：有 3 个活邻居时出生，有 2 或 3 个活邻居时存活。':next==='sbc'?'S 指存活，B 指出生，C 指状态总数。仅状态 1 计入活邻居；失活后依次经过 2…C−1，再回到 0。C2 只有空白与活跃两种状态。':next==='expression'?'直接写下一状态的公式。布尔结果 true/false 对应 1/0；数值结果原样保留，可为小数或负数。在表达式里，* 是乘号。':'每行 10 项，用逗号分隔；多条规则用换行或 / 分隔。* 匹配任意状态，结果不能是 *。从上到下，第一条匹配的规则生效。';
     $('order-help').textContent=next==='table'?'中心,上,右上,右,右下,下,左下,左,左上,结果':next==='expression'?'A B C / D E F / G H I · E 为中心，结果作为 E 的下一状态。':'按顺时针读取邻居，所有元胞同时更新。';
     document.querySelectorAll('.neighborhood b').forEach((b,i)=>{b.textContent=next==='expression'?'ABCDEFGHI'[i]:[8,1,2,7,0,3,6,5,4][i];});markDirty();}
-  function markDirty(){dirty=true;$('draft-status').textContent='尚未应用';$('rule-error').hidden=true;}
-  function applied(){dirty=false;$('draft-status').textContent='已应用';$('rule-error').hidden=true;}
+  function markDirty(){dirty=true;$('draft-status').textContent='尚未应用';$('rule-error').hidden=true;syncDemo();}
+  function applied(){dirty=false;$('draft-status').textContent='已应用';$('rule-error').hidden=true;syncDemo();syncPreset();}
   function applyRule(){try{
     const next=C.compile(spec());let changed=0,textStates=0;
     const converted=grid.map(v=>{
@@ -64,7 +67,8 @@
   $('set-brush').onclick=setNumericBrush;$('numeric-brush').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();setNumericBrush();}};
   document.querySelectorAll('[data-format]').forEach(b=>b.onclick=()=>setFormat(b.dataset.format));
   ['rule-text','state-labels','fallback'].forEach(id=>$(id).addEventListener('input',markDirty));
-  $('preset').onchange=()=>{const presets={life:['bs','B3/S23'],seeds:['bs','B2/S'],brain:['sbc','S/B2/C3'],'user-sbc':['sbc','S23/B2/C2'],'user-table':['table','1,0,1,0,1,0,1,*,1,1'],signal:['table','0,火,*,*,*,*,*,*,*,火\n火,*,*,*,*,*,*,*,*,水\n水,*,*,*,*,*,*,*,*,0'],'expression-life':['expression','n == 3 || (E == 1 && n == 2)'],'expression-cycle':['expression','(E + B + H) % 3']};const [f,t]=presets[$('preset').value];setFormat(f);$('rule-text').value=t;if(f==='table')$('state-labels').value=$('preset').value==='signal'?'0,火,水':'0,1';markDirty();notice('已载入示例，点击“应用规则”后生效。');};
+  $('preset').onchange=()=>{const [f,t]=presets[$('preset').value];setFormat(f);$('rule-text').value=t;if(f==='table')$('state-labels').value=$('preset').value==='signal'?'0,火,水':'0,1';markDirty();notice('已载入规则，点击“应用规则”后生效。');};
+  $('wireworld-demo').onclick=()=>{pushHistory();restore(P.wireworldDemo(),true);brush=3;erasing=false;inspecting=false;validateBrush();palette();setZoom(1);notice('电线示例已载入，点击开始演化。蓝色电子头沿黄色导线移动，红色是电子尾；可撤销恢复原棋盘。');};
   $('boundary').onchange=()=>{setRunning(false);pushHistory();boundary=$('boundary').value;saveSoon();};
   const setZoom=z=>{zoom=Math.max(.6,Math.min(4,z));$('zoom-value').textContent=Math.round(zoom*100)+'%';draw();};$('zoom-in').onclick=()=>setZoom(zoom*1.25);$('zoom-out').onclick=()=>setZoom(zoom/1.25);$('fit').onclick=()=>setZoom(1);$('grid-toggle').onclick=()=>{showGrid=!showGrid;$('grid-toggle').setAttribute('aria-pressed',String(showGrid));draw();};
   $('expand').onclick=()=>{try{const r=C.compile(spec()),e=C.expansion(r);$('expansion-info').textContent='共 '+e.total.toLocaleString()+' 条，展示前 '+e.lines.length+' 条（保持原有优先顺序）。';$('expansion-lines').textContent=e.lines.join('\n');$('expansion-dialog').showModal();}catch(e){$('rule-error').textContent=e.message;$('rule-error').hidden=false;}};$('close-dialog').onclick=()=>$('expansion-dialog').close();
