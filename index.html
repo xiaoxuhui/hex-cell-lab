@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f4f5ee"><meta name="description" content="绘制种子，编写规则，探索元胞自动机。支持 B/S、SBC 和带星号的自定义规则。"><title>元胞实验室 · CELL LAB</title><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231d5947'/%3E%3Cpath fill='%23bce879' d='M7 7h8v8H7zm10 10h8v8h-8zm0-10h8v8h-8z'/%3E%3C/svg%3E"><link rel="stylesheet" href="styles/main.css"><script defer src="src/core.js"></script><script defer src="src/app.js"></script></head>
+<body>
+<header class="topbar"><a class="brand" href="./" aria-label="元胞实验室首页"><span class="brand-icon"><i></i><i></i><i></i><i></i></span><span>元胞实验室 <small>CELL LAB</small></span></a><div class="top-actions"><span class="local-badge"><b></b> 浏览器本地运算</span><button id="export" class="quiet">↓ 导出</button><button id="import" class="quiet">↑ 导入</button><input id="file" type="file" accept=".json,application/json" hidden></div></header>
+<main>
+<div class="intro"><div><div class="eyebrow">A PLAYGROUND FOR EMERGENCE</div><h1>简单规则，无限可能<span>。</span></h1><p>种下一颗元胞，看看它们会创造什么。</p></div><div class="version">实验编号 <span>001</span><small>MOORE · 八邻域 / v1.0.0</small></div></div>
+<div class="workspace">
+<section class="simulation" aria-label="模拟棋盘">
+<div class="canvas-header"><div class="board-label"><b class="status-dot" id="status-dot"></b><strong id="run-status">等待生长</strong><span id="board-size">72 × 48</span></div><div class="board-tools"><button id="zoom-out" title="缩小" aria-label="缩小">−</button><span id="zoom-value">100%</span><button id="zoom-in" title="放大" aria-label="放大">＋</button><button id="fit" title="适应棋盘">适应</button><button id="grid-toggle" title="显示或隐藏网格" aria-pressed="true">▦</button></div></div>
+<div class="canvas-wrap" id="canvas-wrap"><canvas id="board" tabindex="0" aria-label="元胞棋盘。拖动绘制，右键擦除，空格播放或暂停"></canvas><div class="canvas-caption">每一格，都是一种可能</div><div class="coordinate" id="coordinate">x — · y —</div></div>
+<div class="transport"><div class="transport-main"><button id="play" class="primary">▶ <span>开始演化</span></button><button id="step" title="单步演化">▸▏<span>单步</span></button><button id="undo" title="撤销上次操作" disabled>↶ <span>撤销</span></button></div><label class="speed">速度 <input id="speed" type="range" min="1" max="30" value="10"><output id="speed-value">10 代/秒</output></label></div>
+<div class="stats"><div><span>演化代数</span><strong id="generation">0</strong><small>GENERATIONS</small></div><div><span>非零元胞</span><strong id="population">0</strong><small>POPULATION</small></div><div><span>占据比例</span><strong id="density">0<em>%</em></strong><small>DENSITY</small></div><div><span>当前规则</span><strong class="rule-stat" id="active-rule">B3/S23</strong><small id="rule-kind">B/S · 二状态</small></div></div>
+<div class="paintbar"><div><span class="label">画笔状态</span><div id="palette" class="palette" aria-label="选择绘制状态"></div></div><div class="paint-actions"><button id="eraser" class="quiet" aria-pressed="false">◇ 擦除</button><span class="separator"></span><button id="random" class="quiet">⤨ 随机填充</button><button id="clear" class="quiet">⌫ 清空</button></div></div>
+<p class="canvas-help"><span>拖动绘制 · 右键擦除 · 空格播放 / 暂停</span><span id="save-status">自动保存在此浏览器</span></p>
+</section>
+<aside class="rule-panel"><div class="panel-title"><div><span class="eyebrow">THE RULE BOOK</span><h2>规则工作台</h2></div><span class="edit-icon">⌘</span></div>
+<div class="tabs" role="tablist" aria-label="规则格式"><button role="tab" data-format="bs" aria-selected="true">B/S</button><button role="tab" data-format="sbc" aria-selected="false">SBC</button><button role="tab" data-format="table" aria-selected="false">自定义</button></div>
+<div class="preset-line"><label for="preset">从一个灵感开始</label><select id="preset"><option value="life">经典生命 · B3/S23</option><option value="seeds">种子 · B2/S</option><option value="brain">布莱恩大脑 · S/B2/C3</option><option value="user-sbc">你的 SBC · S23/B2/C2</option><option value="user-table">你的通配规则</option><option value="signal">文字信号 · 火与水</option></select></div>
+<label class="field-label" for="rule-text">规则表达式 <span id="draft-status">已应用</span></label><textarea id="rule-text" spellcheck="false" rows="3">B3/S23</textarea>
+<div id="custom-options" hidden><label class="field-label" for="state-labels">状态列表 <small>逗号分隔，0 为空白</small></label><input id="state-labels" value="0,1" placeholder="0,1 或 0,火,水"><label class="field-label" for="fallback">没有匹配的规则时</label><select id="fallback"><option value="keep">保持当前状态</option><option value="zero">变为空白（0）</option></select></div>
+<p class="rule-description" id="rule-description">B 指出生，S 指存活。B3/S23：有 3 个活邻居时出生，有 2 或 3 个活邻居时存活。</p>
+<p id="rule-error" class="error" role="alert" hidden></p><button id="apply" class="apply">应用规则 <span>↗</span></button><div class="applied" id="apply-note" role="status">规则已就绪，画下你的第一颗种子。</div>
+<div class="rule-guide"><div class="guide-title"><strong>认识你的邻居</strong><span>8 NEIGHBORS</span></div><div class="neighborhood"><span>左上 <b>8</b></span><span>上 <b>1</b></span><span>右上 <b>2</b></span><span>左 <b>7</b></span><span class="center">中心 <b>0</b></span><span>右 <b>3</b></span><span>左下 <b>6</b></span><span>下 <b>5</b></span><span>右下 <b>4</b></span></div><div class="order" id="order-help">按顺时针读取邻居，所有元胞同时更新。</div><button id="expand" class="expand" hidden>查看星号展开 ↗</button></div>
+<label class="boundary" for="boundary"><span>世界边界<small>让边缘相遇，或让世界有尽头。</small></span><select id="boundary"><option value="wrap">环绕世界</option><option value="zero">外界为空白</option></select></label>
+</aside></div>
+<footer><span><b>✳</b> 微小的起点，也有自己的宇宙。</span><span>本地运行 · 可离线使用 · 规则由你定义</span></footer>
+</main>
+<dialog id="expansion-dialog"><div class="dialog-head"><h2>通配规则展开</h2><button id="close-dialog" aria-label="关闭">×</button></div><p id="expansion-info"></p><pre id="expansion-lines"></pre><p>每个 * 独立匹配状态列表中的任意一项。演化时直接匹配，无需实际展开。</p></dialog>
+</body></html>
