@@ -4,3 +4,4 @@ tests/artifacts/
 .openai/*.log
 *.log
 .openai/*.tar.gz
+.openai/*.tgz
