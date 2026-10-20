@@ -3,7 +3,7 @@
   'use strict';
   const C=window.CellCore,$=id=>document.getElementById(id),canvas=$('board'),ctx=canvas.getContext('2d');
   const KEY='cell-lab-v1',colors=['#1a2d22','#c3e98e','#e9b966','#82b9ae','#ca93c1','#91a6db','#e18c78','#e4d983'];
-  const drafts={bs:'B3/S23',sbc:'S23/B2/C2',table:'1,0,1,0,1,0,1,*,1,1',expression:'邻居数 == 3 || (中心 == 1 && 邻居数 == 2)'};
+  const drafts={bs:'B3/S23',sbc:'S23/B2/C2',table:'1,0,1,0,1,0,1,*,1,1',expression:'n == 3 || (E == 1 && n == 2)'};
   let format='bs',rule=C.compile({format,text:drafts.bs}),width=72,height=48,grid=Array(width*height).fill(0),generation=0,boundary='wrap';
   let running=false,timer=null,brush=1,erasing=false,inspecting=false,zoom=1,showGrid=true,view={},drawing=false,lastCell=null,strokeValue=1,history=[],saveTimer=null,dirty=false;
   const color=value=>{if(Number.isInteger(value)&&value>=0&&value<colors.length)return colors[value];let hash=0;for(const ch of String(value))hash=(hash*31+ch.charCodeAt(0))|0;return `hsl(${Math.abs(hash)%360} 48% 68%)`;};
@@ -28,7 +28,8 @@
   function tick(){if(!running)return;if(evolve()&&running)timer=setTimeout(tick,1000/Number($('speed').value));}
   function setFormat(next,remember=true){if(remember)drafts[format]=$('rule-text').value;format=next;$('rule-text').value=drafts[next];document.querySelectorAll('[data-format]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.format===next)));$('custom-options').hidden=next!=='table';$('expand').hidden=next!=='table';$('expression-help').hidden=next!=='expression';$('rule-text').rows=next==='table'||next==='expression'?5:3;
     $('rule-description').textContent=next==='bs'?'B 指出生，S 指存活。B3/S23：有 3 个活邻居时出生，有 2 或 3 个活邻居时存活。':next==='sbc'?'S 指存活，B 指出生，C 指状态总数。仅状态 1 计入活邻居；失活后依次经过 2…C−1，再回到 0。C2 只有空白与活跃两种状态。':next==='expression'?'直接写下一状态的公式。布尔结果 true/false 对应 1/0；数值结果原样保留，可为小数或负数。在表达式里，* 是乘号。':'每行 10 项，用逗号分隔；多条规则用换行或 / 分隔。* 匹配任意状态，结果不能是 *。从上到下，第一条匹配的规则生效。';
-    $('order-help').textContent=next==='table'?'中心,上,右上,右,右下,下,左下,左,左上,结果':'按顺时针读取邻居，所有元胞同时更新。';markDirty();}
+    $('order-help').textContent=next==='table'?'中心,上,右上,右,右下,下,左下,左,左上,结果':next==='expression'?'A B C / D E F / G H I · E 为中心，结果作为 E 的下一状态。':'按顺时针读取邻居，所有元胞同时更新。';
+    document.querySelectorAll('.neighborhood b').forEach((b,i)=>{b.textContent=next==='expression'?'ABCDEFGHI'[i]:[8,1,2,7,0,3,6,5,4][i];});markDirty();}
   function markDirty(){dirty=true;$('draft-status').textContent='尚未应用';$('rule-error').hidden=true;}
   function applied(){dirty=false;$('draft-status').textContent='已应用';$('rule-error').hidden=true;}
   function applyRule(){try{
@@ -63,7 +64,7 @@
   $('set-brush').onclick=setNumericBrush;$('numeric-brush').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();setNumericBrush();}};
   document.querySelectorAll('[data-format]').forEach(b=>b.onclick=()=>setFormat(b.dataset.format));
   ['rule-text','state-labels','fallback'].forEach(id=>$(id).addEventListener('input',markDirty));
-  $('preset').onchange=()=>{const presets={life:['bs','B3/S23'],seeds:['bs','B2/S'],brain:['sbc','S/B2/C3'],'user-sbc':['sbc','S23/B2/C2'],'user-table':['table','1,0,1,0,1,0,1,*,1,1'],signal:['table','0,火,*,*,*,*,*,*,*,火\n火,*,*,*,*,*,*,*,*,水\n水,*,*,*,*,*,*,*,*,0'],'expression-life':['expression','邻居数 == 3 || (中心 == 1 && 邻居数 == 2)'],'expression-cycle':['expression','(中心 + 上 + 下) % 3']};const [f,t]=presets[$('preset').value];setFormat(f);$('rule-text').value=t;if(f==='table')$('state-labels').value=$('preset').value==='signal'?'0,火,水':'0,1';markDirty();notice('已载入示例，点击“应用规则”后生效。');};
+  $('preset').onchange=()=>{const presets={life:['bs','B3/S23'],seeds:['bs','B2/S'],brain:['sbc','S/B2/C3'],'user-sbc':['sbc','S23/B2/C2'],'user-table':['table','1,0,1,0,1,0,1,*,1,1'],signal:['table','0,火,*,*,*,*,*,*,*,火\n火,*,*,*,*,*,*,*,*,水\n水,*,*,*,*,*,*,*,*,0'],'expression-life':['expression','n == 3 || (E == 1 && n == 2)'],'expression-cycle':['expression','(E + B + H) % 3']};const [f,t]=presets[$('preset').value];setFormat(f);$('rule-text').value=t;if(f==='table')$('state-labels').value=$('preset').value==='signal'?'0,火,水':'0,1';markDirty();notice('已载入示例，点击“应用规则”后生效。');};
   $('boundary').onchange=()=>{setRunning(false);pushHistory();boundary=$('boundary').value;saveSoon();};
   const setZoom=z=>{zoom=Math.max(.6,Math.min(4,z));$('zoom-value').textContent=Math.round(zoom*100)+'%';draw();};$('zoom-in').onclick=()=>setZoom(zoom*1.25);$('zoom-out').onclick=()=>setZoom(zoom/1.25);$('fit').onclick=()=>setZoom(1);$('grid-toggle').onclick=()=>{showGrid=!showGrid;$('grid-toggle').setAttribute('aria-pressed',String(showGrid));draw();};
   $('expand').onclick=()=>{try{const r=C.compile(spec()),e=C.expansion(r);$('expansion-info').textContent='共 '+e.total.toLocaleString()+' 条，展示前 '+e.lines.length+' 条（保持原有优先顺序）。';$('expansion-lines').textContent=e.lines.join('\n');$('expansion-dialog').showModal();}catch(e){$('rule-error').textContent=e.message;$('rule-error').hidden=false;}};$('close-dialog').onclick=()=>$('expansion-dialog').close();
