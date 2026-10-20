@@ -2,3 +2,5 @@ node_modules/
 tests/artifacts/
 .openai/*.zip
 .openai/*.log
+*.log
+.openai/*.tar.gz
