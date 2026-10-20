@@ -11,7 +11,7 @@
   function ruleError(message){$('rule-error').textContent=message;$('rule-error').hidden=false;}
   function validateBrush(){if(rule.format!=='expression'&&(!Number.isInteger(brush)||brush<0||brush>=rule.count))brush=1;$('numeric-brush').value=String(brush);}
   function spec(){return {format,text:$('rule-text').value,labels:$('state-labels').value,fallback:$('fallback').value};}
-  function snapshot(){return {version:1,width,height,grid:[...grid],generation,boundary,rule:{format:rule.format,text:rule.text,labels:rule.labels,fallback:rule.fallback}};}
+  function snapshot(){return {version:1,width,height,grid:[...grid],generation,boundary,rule:C.ruleSpec(rule)};}
   function pushHistory(){history.push(snapshot());if(history.length>30)history.shift();$('undo').disabled=false;}
   function saveSoon(){clearTimeout(saveTimer);saveTimer=setTimeout(()=>{try{localStorage.setItem(KEY,JSON.stringify(snapshot()));$('save-status').textContent='已自动保存在此浏览器';}catch{$('save-status').textContent='自动保存不可用，请导出备份';}},250);}
   function notice(text){$('apply-note').textContent=text;}
