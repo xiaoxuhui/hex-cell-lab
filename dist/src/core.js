@@ -1,6 +1,14 @@
 (function(root,factory){const api=factory(typeof module==='object'&&module.exports?require('./expression.js'):root.CellExpression);if(typeof module==='object'&&module.exports)module.exports=api;else root.CellCore=api;})(typeof globalThis!=='undefined'?globalThis:this,function(Expression){
   'use strict';
   const DIRECTIONS=[[0,-1],[1,-1],[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1]];
+  function validateDimensions(width,height){if(!Number.isInteger(width)||width<3||width>160)throw Error('宽度必须是 3–160 的整数');if(!Number.isInteger(height)||height<3||height>120)throw Error('高度必须是 3–120 的整数');}
+  function resize(grid,width,height,newWidth,newHeight){
+    validateDimensions(width,height);validateDimensions(newWidth,newHeight);
+    if(!Array.isArray(grid)||grid.length!==width*height)throw Error('原棋盘数据与尺寸不匹配');
+    const next=Array(newWidth*newHeight).fill(0);let cropped=0;
+    for(let y=0;y<height;y++)for(let x=0;x<width;x++){const value=grid[y*width+x];if(x<newWidth&&y<newHeight)next[y*newWidth+x]=value;else if(value!==0)cropped++;}
+    return {width:newWidth,height:newHeight,grid:next,cropped};
+  }
   function compile(spec,options){
     if(!spec||typeof spec.text!=='string'||spec.text.length>65536)throw Error('规则不能为空，且不能超过 65536 字符');
     const format=spec.format,text=spec.text.trim();
@@ -32,6 +40,6 @@
   function step(grid,width,height,rule,boundary){const next=Array(grid.length),n=Array(9);for(let y=0;y<height;y++)for(let x=0;x<width;x++){n[0]=grid[y*width+x];for(let d=0;d<8;d++){let xx=x+DIRECTIONS[d][0],yy=y+DIRECTIONS[d][1];if(boundary==='wrap'){xx=(xx+width)%width;yy=(yy+height)%height;}n[d+1]=xx<0||yy<0||xx>=width||yy>=height?0:grid[yy*width+xx];}try{next[y*width+x]=transition(rule,n);}catch(e){throw Error('元胞 ('+x+', '+y+')：'+e.message);}}return next;}
   function expansion(rule,limit=128){if(rule.format!=='table')return {total:0,lines:[]};const lines=[];let total=0;for(const row of rule.rules){const positions=[];for(let i=0;i<9;i++)if(row[i]===-1)positions.push(i);const count=rule.count**positions.length;total+=count;for(let k=0;k<count&&lines.length<limit;k++){const copy=[...row];let v=k;for(const p of positions){copy[p]=v%rule.count;v=Math.floor(v/rule.count);}lines.push(copy.map(i=>rule.labels[i]).join(','));}}return {total,lines};}
   function ruleSpec(rule){return {format:rule.format,text:rule.text,labels:[...rule.labels],...(rule.format==='table'?{fallback:rule.fallback}:{})};}
-  function validateSave(s){if(!s||s.version!==1)throw Error('不支持的存档版本');const {width,height,generation,boundary}=s;if(!Number.isInteger(width)||!Number.isInteger(height)||width<3||height<3||width>160||height>120)throw Error('棋盘尺寸必须在 3×3 至 160×120 内');const r=compile(s.rule);if(!Array.isArray(s.grid)||s.grid.length!==width*height||s.grid.some(v=>r.format==='expression'?typeof v!=='number'||!Number.isFinite(v):!Number.isInteger(v)||v<0||v>=r.count))throw Error('棋盘状态数据无效');if(!Number.isSafeInteger(generation)||generation<0||!['wrap','zero'].includes(boundary))throw Error('代数或边界数据无效');return {version:1,width,height,generation,boundary,rule:ruleSpec(r),grid:[...s.grid]};}
-  return {compile,transition,step,expansion,validateSave,ruleSpec,DIRECTIONS};
+  function validateSave(s){if(!s||s.version!==1)throw Error('不支持的存档版本');const {width,height,generation,boundary}=s;validateDimensions(width,height);const r=compile(s.rule);if(!Array.isArray(s.grid)||s.grid.length!==width*height||s.grid.some(v=>r.format==='expression'?typeof v!=='number'||!Number.isFinite(v):!Number.isInteger(v)||v<0||v>=r.count))throw Error('棋盘状态数据无效');if(!Number.isSafeInteger(generation)||generation<0||!['wrap','zero'].includes(boundary))throw Error('代数或边界数据无效');return {version:1,width,height,generation,boundary,rule:ruleSpec(r),grid:[...s.grid]};}
+  return {compile,transition,step,expansion,validateSave,ruleSpec,resize,DIRECTIONS};
 });

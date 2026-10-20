@@ -1,10 +1,12 @@
 # 元胞实验室 · CELL LAB
 
-八邻域元胞自动机游戏，版本 1.3.0。打开 `dist/index.html` 即可离线使用。解析器已随页面附带，无需联网或安装运行时依赖。
+八邻域元胞自动机游戏，版本 1.4.0。打开 `dist/index.html` 即可离线使用。解析器已随页面附带，无需联网或安装运行时依赖。
 
 ## 使用
 
 鼠标拖动或触摸绘制，右键擦除。开始/暂停、单步、撤销、随机、清空都在棋盘下方。空格播放/暂停。缩放后点击“适应”恢复完整棋盘。
+
+点击棋盘顶部的尺寸数字（例如“72 × 48”）可修改宽、高，范围分别为 3–160 与 3–120。打开设置会暂停；左上角坐标不变，扩大部分补 0，缩小会裁去右侧和下侧。调整后可撤销恢复完整原棋盘；规则、代数、边界及未应用的草稿保留。保存和重载会恢复实际尺寸。
 
 ### 直接试验电线世界
 
@@ -80,6 +82,7 @@ node tests/browser.cjs
 node tests/expression-browser.cjs
 node tests/wireworld-browser.cjs
 node tests/random-browser.cjs
+node tests/resize-browser.cjs
 node scripts/serve.cjs
 ```
 
