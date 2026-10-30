@@ -7,7 +7,7 @@
   const presets={life:['bs','B3/S23'],seeds:['bs','B2/S'],brain:['sbc','S/B2/C3'],'user-sbc':['sbc','S23/B2/C2'],'user-table':['table','1,0,1,0,1,0,1,*,1,1'],signal:['table','0,火,*,*,*,*,*,*,*,火\n火,*,*,*,*,*,*,*,*,水\n水,*,*,*,*,*,*,*,*,0'],'expression-life':['expression','n == 3 || (E == 1 && n == 2)'],'expression-cycle':['expression','(E + B + H) % 3'],'expression-random':['expression','random([0, 1, 2, 3])'],wireworld:['expression',P.wireworld]};
   let format='bs',rule=C.compile({format,text:drafts.bs}),width=72,height=48,grid=Array(width*height).fill(0),generation=0,boundary='wrap';
   let running=false,timer=null,brush=1,erasing=false,inspecting=false,zoom=1,showGrid=true,view={},drawing=false,lastCell=null,hoveredCell=null,strokeValue=1,history=[],saveTimer=null,dirty=false;
-  const cycle=new window.CellCycles.Tracker();
+  const cycle=new window.CellCycles.Tracker({advance:state=>C.step(state,width,height,rule,boundary)});
   function resetCycle(){cycle.reset(grid,generation,rule.deterministic);}
   function updateCycle(){const found=cycle.period!==null;$('cycle-length').textContent=!cycle.enabled?'暂不检测':found?cycle.period.toLocaleString()+' 代':'检测中';$('cycle-status').classList.toggle('detected',found);$('cycle-detail').textContent=!cycle.enabled?'含随机选择的规则，重复局面不能确定循环。':found?(cycle.period===1?'棋盘已稳定，每一代保持相同。':'整张棋盘重复，演化继续。'):'完整棋盘重复后显示；较长循环可能延后确认。';}
   const color=value=>{if(P.isWireworld(rule)&&P.colors[value])return P.colors[value];if(Number.isInteger(value)&&value>=0&&value<colors.length)return colors[value];let hash=0;for(const ch of String(value))hash=(hash*31+ch.charCodeAt(0))|0;return `hsl(${Math.abs(hash)%360} 48% 68%)`;};

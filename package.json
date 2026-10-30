@@ -1,6 +1,6 @@
 {
   "name": "cell-lab",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "private": true,
   "description": "元胞自动机游戏，支持逻辑与数值表达式、B/S、SBC 与通配规则",
   "scripts": {
