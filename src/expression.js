@@ -26,7 +26,7 @@
     for(const ch of source){if(ch==='('&&++nesting>64)throw Error('括号嵌套最多 64 层');if(ch===')')nesting--;}
     let ast;
     try{ast=parse(source);}catch(e){throw Error('表达式语法错误'+(Number.isInteger(e.index)?'（第 '+(e.index+1)+' 字）':'')+'：'+(e.description||e.message));}
-    let nodes=0;
+    let nodes=0,usesRandom=false;
     function build(node,depth=0){
       if(++nodes>1024||depth>512)throw Error('表达式过于复杂：最多 1024 个节点、512 层运算');
       const child=n=>build(n,depth+1);
@@ -53,6 +53,7 @@
         }
         case 'CallExpression': {
           if(node.callee.type==='Identifier'&&node.callee.name==='random'){
+            usesRandom=true;
             if(node.arguments.length!==1||node.arguments[0].type!=='ArrayExpression')throw Error('random 需要一个列表参数，例如 random([0,1,2,3])');
             const items=node.arguments[0].elements;
             if(items.length<1||items.length>256)throw Error('随机列表需有 1–256 项');
@@ -69,7 +70,8 @@
       }
     }
     const run=build(ast);
-    return n=>{const raw=run(n),value=typeof raw==='boolean'?Number(raw):raw;if(typeof value!=='number'||!Number.isFinite(value))throw Error('表达式结果必须是有限数值或布尔值，请检查除零、溢出或函数参数');return value;};
+    const evaluate=n=>{const raw=run(n),value=typeof raw==='boolean'?Number(raw):raw;if(typeof value!=='number'||!Number.isFinite(value))throw Error('表达式结果必须是有限数值或布尔值，请检查除零、溢出或函数参数');return value;};
+    Object.defineProperty(evaluate,'usesRandom',{value:usesRandom});return evaluate;
   }
   return {compile};
 });

@@ -9,7 +9,8 @@
     for(let y=0;y<height;y++)for(let x=0;x<width;x++){const value=grid[y*width+x];if(x<newWidth&&y<newHeight)next[y*newWidth+x]=value;else if(value!==0)cropped++;}
     return {width:newWidth,height:newHeight,grid:next,cropped};
   }
-  function compile(spec,options){
+  function compile(spec,options){const rule=compileRule(spec,options);rule.deterministic=rule.format!=='expression'||!rule.evaluate.usesRandom;return rule;}
+  function compileRule(spec,options){
     if(!spec||typeof spec.text!=='string'||spec.text.length>65536)throw Error('规则不能为空，且不能超过 65536 字符');
     const format=spec.format,text=spec.text.trim();
     if(format==='expression')return {format,text,count:null,labels:['0','1','2','3'],evaluate:Expression.compile(text,options)};
