@@ -7,6 +7,7 @@
   const presets={life:['bs','B3/S23'],seeds:['bs','B2/S'],brain:['sbc','S/B2/C3'],'user-sbc':['sbc','S23/B2/C2'],'user-table':['table','1,0,1,0,1,0,1,*,1,1'],signal:['table','0,火,*,*,*,*,*,*,*,火\n火,*,*,*,*,*,*,*,*,水\n水,*,*,*,*,*,*,*,*,0'],'expression-life':['expression','n == 3 || (E == 1 && n == 2)'],'expression-cycle':['expression','(E + B + H) % 3'],'expression-random':['expression','random([0, 1, 2, 3])'],wireworld:['expression',P.wireworld]};
   let format='bs',rule=C.compile({format,text:drafts.bs}),width=72,height=48,grid=Array(width*height).fill(0),generation=0,boundary='wrap';
   let running=false,timer=null,brush=1,erasing=false,inspecting=false,zoom=1,showGrid=true,view={},drawing=false,lastCell=null,hoveredCell=null,strokeValue=1,history=[],saveTimer=null,dirty=false;
+  let panX=0,panY=0,panning=null,gesturePointer=null;
   const cycle=new window.CellCycles.Tracker({advance:state=>C.step(state,width,height,rule,boundary)});
   function resetCycle(){cycle.reset(grid,generation,rule.deterministic);}
   function updateCycle(){const found=cycle.period!==null;$('cycle-length').textContent=!cycle.enabled?'暂不检测':found?cycle.period.toLocaleString()+' 代':'检测中';$('cycle-status').classList.toggle('detected',found);$('cycle-detail').textContent=!cycle.enabled?'含随机选择的规则，重复局面不能确定循环。':found?(cycle.period===1?'棋盘已稳定，每一代保持相同。':'整张棋盘重复，演化继续。'):'完整棋盘重复后显示；较长循环可能延后确认。';}
@@ -24,7 +25,7 @@
   function updateStats(){const n=grid.reduce((a,b)=>a+(b!==0),0);$('generation').textContent=generation.toLocaleString();$('population').textContent=n.toLocaleString();$('density').textContent=(100*n/grid.length).toFixed(1)+'%';$('active-rule').textContent=P.isWireworld(rule)?'电线世界':rule.format==='expression'?'表达式':rule.format==='table'?rule.rules.length+' 条规则':rule.text.toUpperCase().replace(/\s/g,'');$('active-rule').title=rule.text;$('rule-kind').textContent=P.isWireworld(rule)?'表达式 · 4 状态':rule.format==='expression'?'布尔 / 数值':(rule.format==='table'?'自定义':rule.format==='bs'?'B/S':'SBC')+' · '+rule.count+' 状态';$('board-size').textContent=width+' × '+height+' ▾';$('board-size').setAttribute('aria-label','设置棋盘尺寸，当前 '+width+' × '+height);}
   function palette(){const p=$('palette'),numeric=rule.format==='expression';p.replaceChildren();const values=numeric?[...new Set([0,1,2,3,brush])]:Array.from({length:rule.count},(_,i)=>i);for(const value of values){const b=document.createElement('button');b.className='swatch';b.style.setProperty('--swatch',color(value));b.textContent=label(value);b.title='绘制状态 '+label(value);b.setAttribute('aria-label','绘制状态 '+label(value));b.setAttribute('aria-pressed',String(!inspecting&&!erasing&&value===brush));b.onclick=()=>{brush=value;erasing=false;inspecting=false;$('numeric-brush').value=String(value);palette();};p.append(b);}$('eraser').setAttribute('aria-pressed',String(erasing));$('inspect').setAttribute('aria-pressed',String(inspecting));$('numeric-tools').hidden=!numeric;}
   function draw(){const r=canvas.getBoundingClientRect();if(!r.width||!r.height)return;const dpr=Math.min(window.devicePixelRatio||1,3),w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle='#17281f';ctx.fillRect(0,0,r.width,r.height);
-    const size=Math.min((r.width-28)/width,(r.height-48)/height)*zoom,ox=(r.width-size*width)/2,oy=(r.height-size*height)/2;view={size,ox,oy};
+    const size=Math.min((r.width-28)/width,(r.height-48)/height)*zoom,ox=(r.width-size*width)/2+panX,oy=(r.height-size*height)/2+panY;view={size,ox,oy};
     for(let y=0;y<height;y++)for(let x=0;x<width;x++){const value=grid[y*width+x],px=ox+x*size,py=oy+y*size;if(px+size<0||py+size<0||px>r.width||py>r.height)continue;if(value){ctx.fillStyle=color(value);ctx.fillRect(px+.6,py+.6,Math.max(.5,size-1.2),Math.max(.5,size-1.2));}else if(showGrid&&size>=4){ctx.fillStyle='#52704790';ctx.fillRect(px+size/2-.5,py+size/2-.5,1,1);}}
     if(showGrid&&size>=11){ctx.strokeStyle='#43634435';ctx.lineWidth=.5;ctx.beginPath();for(let x=0;x<=width;x++){ctx.moveTo(ox+x*size,oy);ctx.lineTo(ox+x*size,oy+height*size);}for(let y=0;y<=height;y++){ctx.moveTo(ox,oy+y*size);ctx.lineTo(ox+width*size,oy+y*size);}ctx.stroke();}
   }
@@ -52,14 +53,26 @@
     setRunning(false);pushHistory();grid=converted;rule=next;resetCycle();validateBrush();drafts[format]=$('rule-text').value;applied();palette();refresh();
     notice('已应用'+(changed?'；'+changed+' 个未定义状态已归零。':textStates?'；文字状态已按调色板序号转换为数值。':'，下一代将使用这套规则。'));return true;
   }catch(e){ruleError(e.message);return false;}}
-  function restore(raw,retainHistory=false){const s=C.validateSave(raw);setRunning(false);if(!retainHistory)history=[];width=s.width;height=s.height;grid=s.grid;generation=s.generation;boundary=s.boundary;rule=C.compile(s.rule);resetCycle();drafts[rule.format]=rule.text;$('state-labels').value=rule.labels.join(',');$('fallback').value=rule.fallback||'keep';setFormat(rule.format,false);$('boundary').value=boundary;validateBrush();applied();palette();$('undo').disabled=!history.length;refresh();}
+  function restore(raw,retainHistory=false){const s=C.validateSave(raw);setRunning(false);endStroke();if(!retainHistory)history=[];width=s.width;height=s.height;grid=s.grid;generation=s.generation;boundary=s.boundary;rule=C.compile(s.rule);fitBoard();resetCycle();drafts[rule.format]=rule.text;$('state-labels').value=rule.labels.join(',');$('fallback').value=rule.fallback||'keep';setFormat(rule.format,false);$('boundary').value=boundary;validateBrush();applied();palette();$('undo').disabled=!history.length;refresh();}
   function locate(e){const r=canvas.getBoundingClientRect();return {x:Math.floor((e.clientX-r.left-view.ox)/view.size),y:Math.floor((e.clientY-r.top-view.oy)/view.size)};}
   function paintCell(x,y){if(x>=0&&x<width&&y>=0&&y<height)grid[y*width+x]=strokeValue;}
   function showCell(p){hoveredCell=p;const valid=p.x>=0&&p.x<width&&p.y>=0&&p.y<height;$('coordinate').textContent=valid?'x '+p.x+' · y '+p.y+' · 状态 '+label(grid[p.y*width+p.x]):'x — · y —';}
   function paintTo(point){if(lastCell){let {x,y}=lastCell,dx=Math.abs(point.x-x),dy=-Math.abs(point.y-y),sx=x<point.x?1:-1,sy=y<point.y?1:-1,err=dx+dy;for(let n=0;n<1000;n++){paintCell(x,y);if(x===point.x&&y===point.y)break;const e=2*err;if(e>=dy){err+=dy;x+=sx;}if(e<=dx){err+=dx;y+=sy;}}}else paintCell(point.x,point.y);lastCell=point;resetCycle();refresh();showCell(point);}
-  canvas.addEventListener('pointerdown',e=>{if(e.button!==0&&e.button!==2)return;const p=locate(e);if(p.x<0||p.y<0||p.x>=width||p.y>=height)return;e.preventDefault();if(inspecting&&e.button===0){showCell(p);return;}setRunning(false);pushHistory();drawing=true;lastCell=null;strokeValue=e.button===2||erasing?0:brush;canvas.setPointerCapture(e.pointerId);paintTo(p);});
-  canvas.addEventListener('pointermove',e=>{const p=locate(e);showCell(p);if(drawing)paintTo(p);});
-  const endStroke=()=>{drawing=false;lastCell=null;};canvas.addEventListener('pointerup',endStroke);canvas.addEventListener('pointercancel',endStroke);canvas.addEventListener('lostpointercapture',endStroke);canvas.addEventListener('contextmenu',e=>e.preventDefault());
+  canvas.addEventListener('pointerdown',e=>{
+    if(gesturePointer!==null)return;
+    if(e.button===1){e.preventDefault();const r=canvas.getBoundingClientRect();setZoom(zoom*1.25,{x:e.clientX-r.left,y:e.clientY-r.top});showCell(locate(e));return;}
+    if(e.button===2){e.preventDefault();panning={x:e.clientX,y:e.clientY,panX,panY};gesturePointer=e.pointerId;canvas.setPointerCapture(e.pointerId);canvas.classList.add('panning');return;}
+    if(e.button!==0)return;const p=locate(e);if(p.x<0||p.y<0||p.x>=width||p.y>=height)return;e.preventDefault();if(inspecting){showCell(p);return;}
+    setRunning(false);pushHistory();drawing=true;gesturePointer=e.pointerId;lastCell=null;strokeValue=erasing?0:brush;canvas.setPointerCapture(e.pointerId);paintTo(p);
+  });
+  canvas.addEventListener('pointermove',e=>{
+    if(gesturePointer!==null&&e.pointerId!==gesturePointer)return;
+    if(panning){if(!(e.buttons&2)){endStroke(e);return;}panX=panning.panX+e.clientX-panning.x;panY=panning.panY+e.clientY-panning.y;draw();showCell(locate(e));return;}
+    const p=locate(e);showCell(p);if(drawing){if(e.buttons&1)paintTo(p);else endStroke(e);}
+  });
+  function endStroke(e){if(e&&e.pointerId!==undefined&&e.pointerId!==gesturePointer)return;const id=gesturePointer;drawing=false;panning=null;gesturePointer=null;lastCell=null;canvas.classList.remove('panning');if(id!==null&&canvas.hasPointerCapture(id))canvas.releasePointerCapture(id);}
+  canvas.addEventListener('pointerup',endStroke);canvas.addEventListener('pointercancel',endStroke);canvas.addEventListener('lostpointercapture',endStroke);canvas.addEventListener('contextmenu',e=>e.preventDefault());canvas.addEventListener('auxclick',e=>{if(e.button===1)e.preventDefault();});
+  canvas.addEventListener('wheel',e=>{if(!e.deltaY)return;e.preventDefault();endStroke();const r=canvas.getBoundingClientRect(),delta=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?r.height:1);setZoom(zoom*Math.exp(-Math.max(-.7,Math.min(.7,delta*.002))),{x:e.clientX-r.left,y:e.clientY-r.top});showCell(locate(e));},{passive:false});
   $('play').onclick=()=>setRunning(!running);$('step').onclick=()=>evolve(true);
   $('undo').onclick=()=>{if(history.length){restore(history.pop(),true);notice('已撤销上次操作。');}};
   $('speed').oninput=()=>{$('speed-value').textContent=$('speed').value+' 代/秒';};
@@ -71,22 +84,24 @@
   document.querySelectorAll('[data-format]').forEach(b=>b.onclick=()=>setFormat(b.dataset.format));
   ['rule-text','state-labels','fallback'].forEach(id=>$(id).addEventListener('input',markDirty));
   $('preset').onchange=()=>{const [f,t]=presets[$('preset').value];setFormat(f);$('rule-text').value=t;if(f==='table')$('state-labels').value=$('preset').value==='signal'?'0,火,水':'0,1';markDirty();notice('已载入规则，点击“应用规则”后生效。');};
-  $('wireworld-demo').onclick=()=>{pushHistory();restore(P.wireworldDemo(),true);brush=3;erasing=false;inspecting=false;validateBrush();palette();setZoom(1);notice('电线示例已载入，点击开始演化。蓝色电子头沿黄色导线移动，红色是电子尾；可撤销恢复原棋盘。');};
+  $('wireworld-demo').onclick=()=>{pushHistory();restore(P.wireworldDemo(),true);brush=3;erasing=false;inspecting=false;validateBrush();palette();notice('电线示例已载入，点击开始演化。蓝色电子头沿黄色导线移动，红色是电子尾；可撤销恢复原棋盘。');};
   $('boundary').onchange=()=>{setRunning(false);pushHistory();boundary=$('boundary').value;resetCycle();refresh();};
-  const setZoom=z=>{zoom=Math.max(.6,Math.min(4,z));$('zoom-value').textContent=Math.round(zoom*100)+'%';draw();};$('zoom-in').onclick=()=>setZoom(zoom*1.25);$('zoom-out').onclick=()=>setZoom(zoom/1.25);$('fit').onclick=()=>setZoom(1);$('grid-toggle').onclick=()=>{showGrid=!showGrid;$('grid-toggle').setAttribute('aria-pressed',String(showGrid));draw();};
+  function setZoom(z,anchor){const r=canvas.getBoundingClientRect(),next=Math.max(.6,Math.min(4,z)),ratio=next/zoom,p=anchor||{x:r.width/2,y:r.height/2};panX=ratio*panX+(1-ratio)*(p.x-r.width/2);panY=ratio*panY+(1-ratio)*(p.y-r.height/2);zoom=next;$('zoom-value').textContent=Math.round(zoom*100)+'%';draw();}
+  function fitBoard(){endStroke();panX=0;panY=0;setZoom(1);}
+  $('zoom-in').onclick=()=>setZoom(zoom*1.25);$('zoom-out').onclick=()=>setZoom(zoom/1.25);$('fit').onclick=fitBoard;$('grid-toggle').onclick=()=>{showGrid=!showGrid;$('grid-toggle').setAttribute('aria-pressed',String(showGrid));draw();};
   $('board-size').onclick=()=>{setRunning(false);endStroke();$('resize-width').value=String(width);$('resize-height').value=String(height);$('size-error').hidden=true;$('size-dialog').showModal();};
   const closeSize=()=>$('size-dialog').close();$('size-close').onclick=closeSize;$('size-cancel').onclick=closeSize;
   $('resize-form').onsubmit=e=>{e.preventDefault();try{
     const next=C.resize(grid,width,height,Number($('resize-width').value),Number($('resize-height').value));
     if(next.width===width&&next.height===height){closeSize();notice('棋盘尺寸保持 '+width+' × '+height+'。');return;}
-    pushHistory();grid=next.grid;width=next.width;height=next.height;resetCycle();hoveredCell=null;setZoom(1);refresh();closeSize();
+    pushHistory();grid=next.grid;width=next.width;height=next.height;resetCycle();hoveredCell=null;fitBoard();refresh();closeSize();
     notice('棋盘已调整为 '+width+' × '+height+'，'+(next.cropped?'裁去 '+next.cropped+' 个非零元胞':'重叠区域已保留')+'；可撤销恢复。');
   }catch(error){$('size-error').textContent=error.message;$('size-error').hidden=false;}};
   $('expand').onclick=()=>{try{const r=C.compile(spec()),e=C.expansion(r);$('expansion-info').textContent='共 '+e.total.toLocaleString()+' 条，展示前 '+e.lines.length+' 条（保持原有优先顺序）。';$('expansion-lines').textContent=e.lines.join('\n');$('expansion-dialog').showModal();}catch(e){$('rule-error').textContent=e.message;$('rule-error').hidden=false;}};$('close-dialog').onclick=()=>$('expansion-dialog').close();
   $('export').onclick=()=>{const blob=new Blob([JSON.stringify(snapshot(),null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='cell-lab-generation-'+generation+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);notice('已导出当前棋盘与已应用规则'+(dirty?'；未应用的草稿未导出。':'。'));};
   $('import').onclick=()=>$('file').click();$('file').onchange=async()=>{const f=$('file').files[0];if(!f)return;try{if(f.size>2000000)throw Error('文件大小不能超过 2 MB');const s=C.validateSave(JSON.parse(await f.text()));pushHistory();restore(s,true);notice('存档已导入。');}catch(e){$('rule-error').textContent='导入失败：'+e.message;$('rule-error').hidden=false;}$('file').value='';};
   document.addEventListener('keydown',e=>{if(e.code==='Space'&&!e.repeat&&!/INPUT|TEXTAREA|SELECT|BUTTON/.test(e.target.tagName)&&!$('expansion-dialog').open&&!$('size-dialog').open){e.preventDefault();setRunning(!running);}});
-  document.addEventListener('visibilitychange',()=>{if(document.hidden)setRunning(false);});window.addEventListener('pagehide',()=>{try{localStorage.setItem(KEY,JSON.stringify(snapshot()));}catch{/* Existing save status already exposes storage availability. */}});
+  window.addEventListener('blur',()=>endStroke());document.addEventListener('visibilitychange',()=>{if(document.hidden){endStroke();setRunning(false);}});window.addEventListener('pagehide',()=>{try{localStorage.setItem(KEY,JSON.stringify(snapshot()));}catch{/* Existing save status already exposes storage availability. */}});
   new ResizeObserver(draw).observe($('canvas-wrap'));
   // A deterministic seed keeps the first visit interesting and reproducible.
   let seed=7289;
@@ -97,5 +112,5 @@
   resetCycle();
   try{const raw=localStorage.getItem(KEY);if(raw)restore(JSON.parse(raw));else{palette();refresh();}}catch{palette();refresh();notice('本地存档无效，已载入初始种子。');}
   // Read-only state and coordinate access make browser acceptance checks reliable.
-  window.CellLab={getState:()=>snapshot(),getView:()=>({...view,running,brush,zoom}),getDraft:()=>spec()};
+  window.CellLab={getState:()=>snapshot(),getView:()=>({...view,running,brush,zoom,panX,panY,panning:!!panning}),getDraft:()=>spec()};
 })();

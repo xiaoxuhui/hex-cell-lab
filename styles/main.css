@@ -10,3 +10,5 @@
 #board-size{font:10px var(--mono);padding:3px 6px;border:1px solid #53654b;color:#c2ceba;background:#2a422f;white-space:nowrap}#board-size:hover{background:#3a5239}#size-dialog{width:min(440px,92vw)}.size-fields{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:22px 0}.size-fields label{font-size:12px}.size-fields input{display:block;width:100%;margin-top:9px;font:20px var(--mono)}.size-fields small{font-size:10px;color:var(--muted);margin-left:7px}.dialog-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:20px}.dialog-actions button{font-size:12px}.dialog-actions .primary{background:var(--green);border-color:var(--green);color:white}
 
 .cycle-status{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px 12px;padding:12px 14px;margin:-7px 0 19px;border:1px solid var(--line);border-radius:8px;background:var(--paper);font-size:11px;color:var(--muted)}.cycle-status strong{font:600 15px var(--mono);color:var(--green)}.cycle-status small{font-size:10px;line-height:1.7;overflow-wrap:anywhere}.cycle-status.detected{background:#edf4e4;border-color:#b9cea2}
+
+canvas.panning{cursor:grabbing}.canvas-help>span:first-child{line-height:1.8}
