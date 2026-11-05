@@ -4,7 +4,7 @@
 - **Approved**: 2026-11-05 用户要求把规则直接复制到 Golly
 - **Type**: feature
 
-## G1 转换与原生验证 [PENDING]
+## G1 转换与原生验证 [COMPLETE]
 - **Objective**：导出 Golly 规则字符串、精确 @TABLE 与有限状态 @TREE，拒绝不能等价转换的表达式。
 - **Definition of Done**：node --test tests/golly.test.cjs 通过，独立解析后对照方向和所有邻域；Golly 官方原生引擎加载并演化对照通过。
 - **Files**：src/golly.js, tests/golly.test.cjs, tests/golly-native.cjs。
