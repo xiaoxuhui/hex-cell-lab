@@ -23,4 +23,8 @@ B/S 与 SBC 可直接在 Golly 设置规则；B0 的 SBC 转换成等价 B/S 或
 
 ## 回归与交付
 
-原有浏览器回归、GitHub main 和私有 Sites 部署正在完成；确认后记录最终结果。
+- 原有 111 项浏览器回归全部通过：基础 20、表达式 17、电线世界 10、随机列表 12、尺寸 14、循环 20、鼠标 18。加上新增 22 项，共 133 项通过，无未捕获浏览器异常。当前终端未提供 npm 命令，实际逐个使用 Node 运行相同脚本并检查退出码。
+- GitHub main 已推送并用 `git ls-remote origin refs/heads/main` 确认源代码提交 `485307be22a5a980d68644a94ca6c18be8699667`。
+- Sites 使用同一源码提交打包并发布，保持原有仅所有者访问。部署 `appgdep_6aec6906faac8191bddefa1775c05768` 返回 `succeeded`，版本 `appgprj_6ad7422b561481918dbeea35c02faf47~appgver_04ce97b1b0d88191829e0298116d8aac`。
+- 游戏地址：https://hex-cell-lab-aiden.xiaoxuhui84.chatgpt.site 。没有自动刷新用户当前页面，避免影响未应用的草稿；用户刷新后可见新按钮。
+- 发布归档：`D:\soft\.backups\hex-cell-lab-deploy-1.7.0-20261105.tar.gz`，SHA256 `AAEBCBEC2015CCF2569DC9373BBAAC5FC5AC6EC7F7BEB199C5BD71B52785D692`。归档已保留，发布后文档记录独立提交，不改变已验证的运行资源。
