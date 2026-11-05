@@ -1,12 +1,22 @@
 # 元胞实验室 · CELL LAB
 
-八邻域元胞自动机游戏，版本 1.6.0。打开 `dist/index.html` 即可离线使用。解析器已随页面附带，无需联网或安装运行时依赖。
+八邻域元胞自动机游戏，版本 1.7.0。打开 `dist/index.html` 即可离线使用。解析器已随页面附带，无需联网或安装运行时依赖。
 
 ## 使用
 
 左键拖动或触摸绘制；选择“擦除”后用左键拖动擦除。开始/暂停、单步、撤销、随机、清空都在棋盘下方。空格播放/暂停。画布内滚轮向上放大、向下缩小，中键点击放大一档（60%–400%）；缩放以鼠标所在位置为中心。右键按住拖动画布平移，包括从留白处开始。“适应”恢复 100% 并居中。视图操作不修改棋盘、撤销或循环检测，也不暂停演化；视图不写入存档。尺寸改变、导入或撤销恢复棋盘时会重新适应。
 
 点击棋盘顶部的尺寸数字（例如“72 × 48”）可修改宽、高，范围分别为 3–160 与 3–120。打开设置会暂停；左上角坐标不变，扩大部分补 0，缩小会裁去右侧和下侧。调整后可撤销恢复完整原棋盘；规则、代数、边界及未应用的草稿保留。保存和重载会恢复实际尺寸。
+
+### 复制到 Golly
+
+先应用规则，再点击规则工作台中“应用规则”下方的“复制到 Golly”。复制 B/S 或 SBC 后，在 Golly 的 Control → Set Rule（设置规则）中粘贴；例如 `S23/B2/C2` 会转换为 `23/2/2`。
+
+自定义规则生成完整 `.rule` 文本。复制后在 Golly 选择 File → Open Clipboard（打开剪贴板）或 Edit → Paste（粘贴）安装，也可下载 `.rule` 文件后用 Golly 打开。保留规则顺序、各个星号独立匹配、未匹配行为，文字状态按列表序号映射。
+
+表达式须选择完整的 2–4 状态范围（0…C−1），再点生成。检查全部邻域后生成规则树；电线世界选择 4 状态。含 random、非整数或超出范围的结果不能转换。仅复制规则，棋盘与世界边界需在 Golly 另行设置。
+
+自动复制被浏览器阻止时，内容会选中，按 Ctrl+C（手机长按复制）即可手动复制。打开窗口不会暂停演化或应用草稿。格式依据 [Golly 文件格式](https://golly.sourceforge.io/Help/formats.html)与 [RuleLoader](https://golly.sourceforge.io/Help/Algorithms/RuleLoader.html)。
 
 ### 直接试验电线世界
 
@@ -91,6 +101,9 @@ node tests/random-browser.cjs
 node tests/resize-browser.cjs
 node tests/cycles-browser.cjs
 node tests/mouse-browser.cjs
+node tests/golly-browser.cjs
+# 可选：用自行编译的官方 Golly 命令行引擎做逐格对照
+node tests/golly-native.cjs /absolute/path/to/bgolly
 node scripts/serve.cjs
 ```
 
