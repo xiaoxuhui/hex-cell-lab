@@ -2,9 +2,11 @@
 (function(){
   'use strict';
   const C=window.CellCore,P=window.CellPresets,$=id=>document.getElementById(id),canvas=$('board'),ctx=canvas.getContext('2d');
+  const R=window.CellRedstone;
   const KEY='cell-lab-v1',colors=['#1a2d22','#c3e98e','#e9b966','#82b9ae','#ca93c1','#91a6db','#e18c78','#e4d983'];
   const drafts={bs:'B3/S23',sbc:'S23/B2/C2',table:'1,0,1,0,1,0,1,*,1,1',expression:'n == 3 || (E == 1 && n == 2)'};
   const presets={life:['bs','B3/S23'],seeds:['bs','B2/S'],brain:['sbc','S/B2/C3'],'user-sbc':['sbc','S23/B2/C2'],'user-table':['table','1,0,1,0,1,0,1,*,1,1'],signal:['table','0,火,*,*,*,*,*,*,*,火\n火,*,*,*,*,*,*,*,*,水\n水,*,*,*,*,*,*,*,*,0'],'expression-life':['expression','n == 3 || (E == 1 && n == 2)'],'expression-cycle':['expression','(E + B + H) % 3'],'expression-random':['expression','random([0, 1, 2, 3])'],wireworld:['expression',P.wireworld]};
+  presets.redstone=['expression',R.formula];
   let format='bs',rule=C.compile({format,text:drafts.bs}),width=72,height=48,grid=Array(width*height).fill(0),generation=0,boundary='wrap';
   let running=false,timer=null,brush=1,erasing=false,inspecting=false,zoom=1,showGrid=true,view={},drawing=false,lastCell=null,hoveredCell=null,strokeValue=1,history=[],saveTimer=null,dirty=false;
   let panX=0,panY=0,panning=null,gesturePointer=null;
@@ -14,19 +16,62 @@
   const color=value=>{if(P.isWireworld(rule)&&P.colors[value])return P.colors[value];if(Number.isInteger(value)&&value>=0&&value<colors.length)return colors[value];let hash=0;for(const ch of String(value))hash=(hash*31+ch.charCodeAt(0))|0;return `hsl(${Math.abs(hash)%360} 48% 68%)`;};
   const label=value=>P.isWireworld(rule)&&P.names[value]?value+' · '+P.names[value]:rule.format==='expression'?String(value):rule.labels[value];
   function syncPreset(){const match=Object.entries(presets).find(([,v])=>v[0]===rule.format&&v[1]===rule.text);$('preset').value=match?match[0]:'';}
-  function syncDemo(){ $('wireworld-card').hidden=!(format==='expression'&&$('rule-text').value.trim()===P.wireworld); }
+  function syncDemo(){
+    const draft={format,text:$('rule-text').value.trim()};
+    $('wireworld-card').hidden=!P.isWireworld(draft);
+    $('redstone-card').hidden=!R.isPreset(draft);
+  }
   function ruleError(message){$('rule-error').textContent=message;$('rule-error').hidden=false;}
-  function validateBrush(){if(rule.format!=='expression'&&(!Number.isInteger(brush)||brush<0||brush>=rule.count))brush=1;$('numeric-brush').value=String(brush);}
+  function redstoneBrushes(){
+    const direction=Number($('redstone-direction').value),delay=Number($('redstone-delay').value);
+    return [0,R.dust,R.block,R.torch(direction),R.repeater(direction,delay)];
+  }
+  function validateBrush(){
+    if(R.isPreset(rule))brush=redstoneBrushes().find(value=>R.parts[value].kind===R.parts[brush]?.kind)??R.dust;
+    else if(rule.format!=='expression'&&(!Number.isInteger(brush)||brush<0||brush>=rule.count))brush=1;
+    $('numeric-brush').value=String(brush);
+  }
   function spec(){return {format,text:$('rule-text').value,labels:$('state-labels').value,fallback:$('fallback').value};}
   function snapshot(){return {version:1,width,height,grid:[...grid],generation,boundary,rule:C.ruleSpec(rule)};}
   function pushHistory(){history.push(snapshot());if(history.length>30)history.shift();$('undo').disabled=false;}
   function saveSoon(){clearTimeout(saveTimer);saveTimer=setTimeout(()=>{try{localStorage.setItem(KEY,JSON.stringify(snapshot()));$('save-status').textContent='已自动保存在此浏览器';}catch{$('save-status').textContent='自动保存不可用，请导出备份';}},250);}
   function notice(text){$('apply-note').textContent=text;}
-  function updateStats(){const n=grid.reduce((a,b)=>a+(b!==0),0);$('generation').textContent=generation.toLocaleString();$('population').textContent=n.toLocaleString();$('density').textContent=(100*n/grid.length).toFixed(1)+'%';$('active-rule').textContent=P.isWireworld(rule)?'电线世界':rule.format==='expression'?'表达式':rule.format==='table'?rule.rules.length+' 条规则':rule.text.toUpperCase().replace(/\s/g,'');$('active-rule').title=rule.text;$('rule-kind').textContent=P.isWireworld(rule)?'表达式 · 4 状态':rule.format==='expression'?'布尔 / 数值':(rule.format==='table'?'自定义':rule.format==='bs'?'B/S':'SBC')+' · '+rule.count+' 状态';$('board-size').textContent=width+' × '+height+' ▾';$('board-size').setAttribute('aria-label','设置棋盘尺寸，当前 '+width+' × '+height);}
-  function palette(){const p=$('palette'),numeric=rule.format==='expression';p.replaceChildren();const values=numeric?[...new Set([0,1,2,3,brush])]:Array.from({length:rule.count},(_,i)=>i);for(const value of values){const b=document.createElement('button');b.className='swatch';b.style.setProperty('--swatch',color(value));b.textContent=label(value);b.title='绘制状态 '+label(value);b.setAttribute('aria-label','绘制状态 '+label(value));b.setAttribute('aria-pressed',String(!inspecting&&!erasing&&value===brush));b.onclick=()=>{brush=value;erasing=false;inspecting=false;$('numeric-brush').value=String(value);palette();};p.append(b);}$('eraser').setAttribute('aria-pressed',String(erasing));$('inspect').setAttribute('aria-pressed',String(inspecting));$('numeric-tools').hidden=!numeric;}
+  function updateStats(){const n=grid.reduce((a,b)=>a+(b!==0),0);$('generation').textContent=generation.toLocaleString();$('population').textContent=n.toLocaleString();$('density').textContent=(100*n/grid.length).toFixed(1)+'%';$('active-rule').textContent=R.isPreset(rule)?'红石电路':P.isWireworld(rule)?'电线世界':rule.format==='expression'?'表达式':rule.format==='table'?rule.rules.length+' 条规则':rule.text.toUpperCase().replace(/\s/g,'');$('active-rule').title=rule.text;$('rule-kind').textContent=R.isPreset(rule)?'表达式 · 四方向':P.isWireworld(rule)?'表达式 · 4 状态':rule.format==='expression'?'布尔 / 数值':(rule.format==='table'?'自定义':rule.format==='bs'?'B/S':'SBC')+' · '+rule.count+' 状态';$('board-size').textContent=width+' × '+height+' ▾';$('board-size').setAttribute('aria-label','设置棋盘尺寸，当前 '+width+' × '+height);}
+  function palette(){
+    const p=$('palette'),redstone=R.isPreset(rule),numeric=rule.format==='expression'&&!redstone;
+    p.replaceChildren();p.classList.toggle('redstone-palette',redstone);
+    const values=redstone?redstoneBrushes():numeric?[...new Set([0,1,2,3,brush])]:Array.from({length:rule.count},(_,i)=>i);
+    for(const value of values){
+      const b=document.createElement('button'),part=redstone?R.parts[value]:null;
+      b.className='swatch';b.style.setProperty('--swatch',part?part.color:color(value));
+      b.textContent=part?part.name:label(value);
+      b.title='绘制状态 '+b.textContent;b.setAttribute('aria-label',b.title);
+      b.setAttribute('aria-pressed',String(!inspecting&&!erasing&&value===brush));
+      b.onclick=()=>{brush=value;erasing=false;inspecting=false;$('numeric-brush').value=String(value);palette();};p.append(b);
+    }
+    $('eraser').setAttribute('aria-pressed',String(erasing));$('inspect').setAttribute('aria-pressed',String(inspecting));
+    $('numeric-tools').hidden=!numeric;$('redstone-tools').hidden=!redstone;
+  }
+  function drawRedstoneMark(part,x,y,size){
+    const mark=part.kind==='block'?'◆':R.directions[part.direction];
+    if(!mark||size<9)return;
+    ctx.fillStyle=part.kind==='torch'&&part.strength===0?'#fff0e7':'#21181a';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.font=`bold ${Math.min(24,size*.78)}px system-ui`;
+    ctx.fillText(mark,x+size/2,y+size/2);
+  }
   function draw(){const r=canvas.getBoundingClientRect();if(!r.width||!r.height)return;const dpr=Math.min(window.devicePixelRatio||1,3),w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle='#17281f';ctx.fillRect(0,0,r.width,r.height);
     const size=Math.min((r.width-28)/width,(r.height-48)/height)*zoom,ox=(r.width-size*width)/2+panX,oy=(r.height-size*height)/2+panY;view={size,ox,oy};
-    for(let y=0;y<height;y++)for(let x=0;x<width;x++){const value=grid[y*width+x],px=ox+x*size,py=oy+y*size;if(px+size<0||py+size<0||px>r.width||py>r.height)continue;if(value){ctx.fillStyle=color(value);ctx.fillRect(px+.6,py+.6,Math.max(.5,size-1.2),Math.max(.5,size-1.2));}else if(showGrid&&size>=4){ctx.fillStyle='#52704790';ctx.fillRect(px+size/2-.5,py+size/2-.5,1,1);}}
+    const redstone=R.isPreset(rule);
+    for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+      const value=grid[y*width+x],px=ox+x*size,py=oy+y*size;
+      if(px+size<0||py+size<0||px>r.width||py>r.height)continue;
+      if(value){
+        const part=redstone?R.parts[value]:null;
+        ctx.fillStyle=part?part.color:color(value);
+        ctx.fillRect(px+.6,py+.6,Math.max(.5,size-1.2),Math.max(.5,size-1.2));
+        if(part)drawRedstoneMark(part,px,py,size);
+      }else if(showGrid&&size>=4){ctx.fillStyle='#52704790';ctx.fillRect(px+size/2-.5,py+size/2-.5,1,1);}
+    }
     if(showGrid&&size>=11){ctx.strokeStyle='#43634435';ctx.lineWidth=.5;ctx.beginPath();for(let x=0;x<=width;x++){ctx.moveTo(ox+x*size,oy);ctx.lineTo(ox+x*size,oy+height*size);}for(let y=0;y<=height;y++){ctx.moveTo(ox,oy+y*size);ctx.lineTo(ox+width*size,oy+y*size);}ctx.stroke();}
   }
   function refresh(){updateStats();updateCycle();draw();if(hoveredCell)showCell(hoveredCell);saveSoon();}
@@ -56,7 +101,17 @@
   function restore(raw,retainHistory=false){const s=C.validateSave(raw);setRunning(false);endStroke();if(!retainHistory)history=[];width=s.width;height=s.height;grid=s.grid;generation=s.generation;boundary=s.boundary;rule=C.compile(s.rule);fitBoard();resetCycle();drafts[rule.format]=rule.text;$('state-labels').value=rule.labels.join(',');$('fallback').value=rule.fallback||'keep';setFormat(rule.format,false);$('boundary').value=boundary;validateBrush();applied();palette();$('undo').disabled=!history.length;refresh();}
   function locate(e){const r=canvas.getBoundingClientRect();return {x:Math.floor((e.clientX-r.left-view.ox)/view.size),y:Math.floor((e.clientY-r.top-view.oy)/view.size)};}
   function paintCell(x,y){if(x>=0&&x<width&&y>=0&&y<height)grid[y*width+x]=strokeValue;}
-  function showCell(p){hoveredCell=p;const valid=p.x>=0&&p.x<width&&p.y>=0&&p.y<height;$('coordinate').textContent=valid?'x '+p.x+' · y '+p.y+' · 状态 '+label(grid[p.y*width+p.x]):'x — · y —';}
+  function showCell(p){
+    hoveredCell=p;
+    const valid=p.x>=0&&p.x<width&&p.y>=0&&p.y<height;
+    const position=valid?'x '+p.x+' · y '+p.y:'x — · y —';
+    const value=valid?grid[p.y*width+p.x]:null;
+    if(R.isPreset(rule)){
+      const part=R.parts[value];
+      $('coordinate').textContent=position+(part?' · '+part.name:'');
+      $('redstone-reading').textContent=part&&part.kind!=='empty'?`${position} · ${R.describe(value)}`:'悬停在元件上，或选择“查看”后点按元件。';
+    }else $('coordinate').textContent=position+(valid?' · 状态 '+label(value):'');
+  }
   function paintTo(point){if(lastCell){let {x,y}=lastCell,dx=Math.abs(point.x-x),dy=-Math.abs(point.y-y),sx=x<point.x?1:-1,sy=y<point.y?1:-1,err=dx+dy;for(let n=0;n<1000;n++){paintCell(x,y);if(x===point.x&&y===point.y)break;const e=2*err;if(e>=dy){err+=dy;x+=sx;}if(e<=dx){err+=dx;y+=sy;}}}else paintCell(point.x,point.y);lastCell=point;resetCycle();refresh();showCell(point);}
   canvas.addEventListener('pointerdown',e=>{
     if(gesturePointer!==null)return;
@@ -85,6 +140,14 @@
   ['rule-text','state-labels','fallback'].forEach(id=>$(id).addEventListener('input',markDirty));
   $('preset').onchange=()=>{const [f,t]=presets[$('preset').value];setFormat(f);$('rule-text').value=t;if(f==='table')$('state-labels').value=$('preset').value==='signal'?'0,火,水':'0,1';markDirty();notice('已载入规则，点击“应用规则”后生效。');};
   $('wireworld-demo').onclick=()=>{pushHistory();restore(P.wireworldDemo(),true);brush=3;erasing=false;inspecting=false;validateBrush();palette();notice('电线示例已载入，点击开始演化。蓝色电子头沿黄色导线移动，红色是电子尾；可撤销恢复原棋盘。');};
+  $('redstone-demo').onclick=()=>{
+    pushHistory();
+    brush=R.dust;erasing=false;inspecting=false;
+    restore(R.demo(),true);
+    notice('红石示例已载入。用“单步”观察上排信号，也可擦掉下排左端的红石块测试反相。');
+    $('board').scrollIntoView({block:'nearest'});
+  };
+  $('redstone-direction').onchange=$('redstone-delay').onchange=()=>{validateBrush();palette();};
   $('boundary').onchange=()=>{setRunning(false);pushHistory();boundary=$('boundary').value;resetCycle();refresh();};
   function setZoom(z,anchor){const r=canvas.getBoundingClientRect(),next=Math.max(.6,Math.min(4,z)),ratio=next/zoom,p=anchor||{x:r.width/2,y:r.height/2};panX=ratio*panX+(1-ratio)*(p.x-r.width/2);panY=ratio*panY+(1-ratio)*(p.y-r.height/2);zoom=next;$('zoom-value').textContent=Math.round(zoom*100)+'%';draw();}
   function fitBoard(){endStroke();panX=0;panY=0;setZoom(1);}
@@ -111,7 +174,14 @@
     }catch(e){if(gollyAbort===controller&&e.name!=='AbortError'){$('golly-error').textContent=e.message;$('golly-error').hidden=false;$('golly-status').textContent='未生成规则';}}
     finally{if(gollyAbort===controller)$('golly-generate').disabled=false;}
   }
-  $('golly-open').onclick=()=>{clearGolly();gollyRule=C.compile(C.ruleSpec(rule));$('golly-expression').hidden=gollyRule.format!=='expression';$('golly-count').value=P.isWireworld(gollyRule)?'4':'2';$('golly-dialog').showModal();if(gollyRule.format==='expression')$('golly-status').textContent='请选择完整状态数，然后生成规则。';else generateGolly();};
+  $('golly-open').onclick=()=>{
+    clearGolly();gollyRule=C.compile(C.ruleSpec(rule));
+    const needsCount=gollyRule.format==='expression'&&!R.isPreset(gollyRule);
+    $('golly-expression').hidden=!needsCount;$('golly-count').value=P.isWireworld(gollyRule)?'4':'2';
+    $('golly-dialog').showModal();
+    if(needsCount)$('golly-status').textContent='请选择完整状态数，然后生成规则。';
+    else generateGolly();
+  };
   $('golly-close').onclick=()=>$('golly-dialog').close();$('golly-dialog').addEventListener('close',clearGolly);$('golly-dialog').addEventListener('cancel',clearGolly);$('golly-generate').onclick=generateGolly;$('golly-count').onchange=clearGolly;
   $('golly-copy').onclick=async()=>{const result=gollyResult;if(!result)return;try{await navigator.clipboard.writeText(result.text);if(gollyResult===result&&$('golly-dialog').open)$('golly-status').textContent='已复制，请按下方步骤在 Golly 中粘贴。';}catch{if(gollyResult!==result||!$('golly-dialog').open)return;$('golly-output').focus();$('golly-output').select();$('golly-status').textContent='自动复制不可用，内容已选中。请按 Ctrl+C（手机长按复制），再到 Golly 粘贴。';}};
   $('golly-download').onclick=()=>{if(!gollyResult||gollyResult.kind!=='rule')return;const url=URL.createObjectURL(new Blob([gollyResult.text],{type:'text/plain;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download=gollyResult.filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};

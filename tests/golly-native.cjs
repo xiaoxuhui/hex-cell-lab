@@ -1,11 +1,12 @@
 // Optional external verification: node tests/golly-native.cjs /absolute/path/to/bgolly
-const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process'),a=require('node:assert/strict'),C=require('../src/core.js'),G=require('../src/golly.js'),P=require('../src/presets.js');
+const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process'),a=require('node:assert/strict'),C=require('../src/core.js'),G=require('../src/golly.js'),P=require('../src/presets.js'),R=require('../src/redstone.js');
 const exe=path.resolve(process.argv[2]||process.env.GOLLY_EXE||'bgolly'),dir=path.join(__dirname,'artifacts/golly-native');fs.mkdirSync(dir,{recursive:true});
-const token=v=>v===0?'.':v<=24?String.fromCharCode(64+v):'p'+String.fromCharCode(65+v-25);
+const token=v=>v===0?'.':v<=24?String.fromCharCode(64+v):String.fromCharCode(111+Math.floor((v-1)/24),65+(v-1)%24);
 (async()=>{const specs=[
  ['life',{format:'bs',text:'B3/S23'}],['sbc-user',{format:'sbc',text:'S23/B2/C2'}],['generations',{format:'sbc',text:'S345/B2/C4'}],['empty-counts',{format:'sbc',text:'S/B/C2'}],['b0-binary',{format:'sbc',text:'S23/B0/C2'}],['b0-generations',{format:'sbc',text:'S23/B02/C3'}],
  ['table-direction',{format:'table',text:'*,火,*,*,0,*,*,*,*,火\n火,*,*,*,*,*,*,*,*,水',labels:'0,火,水',fallback:'keep'}],['table-zero',{format:'table',text:'*,*,*,*,*,*,*,1,*,1',labels:'0,1',fallback:'zero'}],
  ['expression-direction',{format:'expression',text:'(A+2*B+C+D+E+F+G+H+I)%3'},3],['expression-life',{format:'expression',text:'n==3 || (E==1 && n==2)'},2],['wireworld',{format:'expression',text:P.wireworld},4],['table-32',{format:'table',text:'*,*,*,*,*,*,*,*,*,31',labels:Array.from({length:32},(_,i)=>String(i)).join(',')},32]
+ ,['redstone',{format:'expression',text:R.formula},R.parts.length]
  ];let passed=0;for(const [id,spec,stateCount]of specs){const rule=C.compile(spec),count=stateCount||rule.count,out=await G.convert(rule,{stateCount:count}),width=12,height=10;
  if(out.filename)fs.writeFileSync(path.join(dir,out.filename),out.text);
  let seed=15901,grid=Array.from({length:width*height},()=>{seed=(seed*16807)%2147483647;return seed%count;});

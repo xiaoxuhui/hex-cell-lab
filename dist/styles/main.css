@@ -13,3 +13,10 @@
 
 canvas.panning{cursor:grabbing}.canvas-help>span:first-child{line-height:1.8}
 .golly-open{display:block;width:100%;font-size:12px;color:var(--green);border-color:#bfcea9;margin-top:-8px}.golly-hint{font-size:10px;color:var(--muted);line-height:1.8;margin:8px 0 22px}#golly-expression{padding:12px;background:#edf3e6;border-radius:7px;font-size:12px}#golly-expression label{display:flex;align-items:center;justify-content:space-between;gap:12px}#golly-expression p{margin:10px 0}#golly-output{font-size:12px;min-height:100px;max-height:28vh;white-space:pre;overflow:auto}#golly-status{color:var(--green);min-height:20px}#golly-instructions{color:var(--ink);overflow-wrap:anywhere}#golly-dialog .dialog-actions{flex-wrap:wrap}
+.redstone-card{background:#fff2ea;border-color:#eacabb}
+.redstone-card strong,.redstone-card small{color:#783c38}
+.redstone-card button{background:#903b3c;border-color:#903b3c}
+.redstone-palette .swatch:nth-child(2){color:#fff5ed}
+.redstone-tools{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:12px 0;border-bottom:1px solid var(--line);font-size:12px}
+.redstone-tools select{padding:5px 7px;font-size:12px}
+.redstone-tools output{flex:1 1 100%;color:var(--muted);line-height:1.6}

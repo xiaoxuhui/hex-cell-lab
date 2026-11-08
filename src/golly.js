@@ -1,4 +1,4 @@
-(function(root,factory){const api=factory(typeof module==='object'&&module.exports?require('./core.js'):root.CellCore);if(typeof module==='object'&&module.exports)module.exports=api;else root.CellGolly=api;})(typeof globalThis!=='undefined'?globalThis:this,function(C){
+(function(root,factory){const api=typeof module==='object'&&module.exports?factory(require('./core.js'),require('./redstone.js')):factory(root.CellCore,root.CellRedstone);if(typeof module==='object'&&module.exports)module.exports=api;else root.CellGolly=api;})(typeof globalThis!=='undefined'?globalThis:this,function(C,Redstone){
   'use strict';
   const TREE_ORDER=[8,2,6,4,1,7,3,5,0];
   const digits=set=>[...set].sort((a,b)=>a-b).join('');
@@ -17,6 +17,41 @@
     return fileRule(rule,count,'@TABLE\nn_states:'+count+'\nneighborhood:Moore\nsymmetries:permute\n'+variables('a',states)+'\n'+variables('d',states.filter(v=>v!==1))+'\n'+rows.join('\n'));
   }
   function abort(signal){if(signal&&signal.aborted){const e=Error('已取消生成');e.name='AbortError';throw e;}}
+  function redstoneTable(rule){
+    const states=Redstone.parts.map((_,state)=>state),definitions=[],rows=[];
+    const any=Redstone.directions.map((_,index)=>'any'+index);
+    function declare(name,values){definitions.push(`var ${name}={${values.join(',')}}`);}
+    function add(center,output,side,group){
+      const neighbors=[...any];
+      if(side!==undefined)neighbors[side]=group;
+      rows.push([center,...neighbors,output].join(','));
+    }
+    any.forEach(name=>declare(name,states));
+    declare('wire',states.filter(value=>Redstone.parts[value].kind==='dust'));
+    // First match implements the strongest signal among the four neighbors.
+    for(let strength=15;strength>0;strength--){
+      any.forEach((_,side)=>{
+        const group=`wire${side}level${strength}`;
+        declare(group,states.filter(value=>Redstone.signal(value,Redstone.opposite(side),true)===strength));
+        add('wire',Redstone.dust+strength,side,group);
+      });
+    }
+    add('wire',Redstone.dust);
+    any.forEach((_,side)=>declare('powered'+side,states.filter(value=>Redstone.signal(value,Redstone.opposite(side))>0)));
+    for(const value of states){
+      const part=Redstone.parts[value];
+      if(part.direction===undefined)continue;
+      const rear=Redstone.opposite(part.direction),neighbors=[0,0,0,0];
+      const off=Redstone.transition(value,...neighbors);
+      neighbors[rear]=Redstone.block;
+      const on=Redstone.transition(value,...neighbors);
+      if(on!==off)add(value,on,rear,'powered'+rear);
+      if(off!==value)add(value,off);
+    }
+    const names=states.map(value=>`${value} ${Redstone.describe(value)}`);
+    const body=['@TABLE',`n_states:${states.length}`,'neighborhood:vonNeumann','symmetries:none',...definitions,...rows,'','@NAMES',...names].join('\n');
+    return fileRule(rule,states.length,body);
+  }
   async function convert(rule,options={}){
     abort(options.signal);
     if(rule.format==='bs')return stringRule('B'+digits(rule.birth)+'/S'+digits(rule.survive),'QuickLife');
@@ -26,6 +61,7 @@
     }
     if(rule.format==='table')return table(rule);
     if(rule.format!=='expression')throw Error('不支持的规则格式');
+    if(Redstone.isPreset(rule))return redstoneTable(rule);
     if(!rule.deterministic)throw Error('含 random 的规则不能等价转换为 Golly 确定性规则。');
     const count=options.stateCount;
     if(!Number.isInteger(count)||count<2||count>4)throw Error('请选择 2–4 个状态；状态必须完整包含在 0…C−1 中。');

@@ -1,8 +1,8 @@
 /* jsep parses syntax; only the operators and variables below can be evaluated. */
 (function(root,factory){
-  if(typeof module==='object'&&module.exports)module.exports=factory(require('../vendor/jsep-1.4.0/dist/cjs/jsep.cjs.js'));
-  else root.CellExpression=factory(root.jsep);
-})(typeof globalThis!=='undefined'?globalThis:this,function(parse){
+  if(typeof module==='object'&&module.exports)module.exports=factory(require('../vendor/jsep-1.4.0/dist/cjs/jsep.cjs.js'),require('./redstone.js'));
+  else root.CellExpression=factory(root.jsep,root.CellRedstone);
+})(typeof globalThis!=='undefined'?globalThis:this,function(parse,Redstone){
   'use strict';
   const variables=Object.create(null);
   // Public positions are row-major; the engine supplies center, then clockwise.
@@ -17,7 +17,7 @@
     '==':(a,b)=>a==b,'!=':(a,b)=>a!=b,'===':(a,b)=>a===b,'!==':(a,b)=>a!==b,
     '&':(a,b)=>a&b,'|':(a,b)=>a|b,'^':(a,b)=>a^b,'<<':(a,b)=>a<<b,'>>':(a,b)=>a>>b,'>>>':(a,b)=>a>>>b
   };
-  const functions={min:[Math.min,1,32],max:[Math.max,1,32],abs:[Math.abs,1,1],floor:[Math.floor,1,1],ceil:[Math.ceil,1,1],round:[Math.round,1,1],sqrt:[Math.sqrt,1,1],pow:[Math.pow,2,2]};
+  const functions={min:[Math.min,1,32],max:[Math.max,1,32],abs:[Math.abs,1,1],floor:[Math.floor,1,1],ceil:[Math.ceil,1,1],round:[Math.round,1,1],sqrt:[Math.sqrt,1,1],pow:[Math.pow,2,2],redstone:[Redstone.transition,5,5]};
   function compile(text,{random=()=>Math.random()}={}){
     if(typeof text!=='string'||!text.trim()||text.length>8192)throw Error('表达式需有 1–8192 个字符');
     if(typeof random!=='function')throw Error('随机源必须是函数');
@@ -61,7 +61,7 @@
             const choices=items.map(child);
             return n=>{const sample=random();if(typeof sample!=='number'||!Number.isFinite(sample)||sample<0||sample>=1)throw Error('随机源必须返回 0（含）到 1（不含）的数字');return choices[Math.floor(sample*choices.length)](n);};
           }
-          if(node.callee.type!=='Identifier'||!Object.hasOwn(functions,node.callee.name))throw Error('只支持 random/min/max/abs/floor/ceil/round/sqrt/pow 函数');
+          if(node.callee.type!=='Identifier'||!Object.hasOwn(functions,node.callee.name))throw Error('只支持 random/min/max/abs/floor/ceil/round/sqrt/pow/redstone 函数');
           const [fn,min,max]=functions[node.callee.name],args=node.arguments.map(child);
           if(args.length<min||args.length>max)throw Error(node.callee.name+' 参数数量应为 '+(min===max?min:min+'–'+max));
           return n=>fn(...args.map(arg=>arg(n)));
