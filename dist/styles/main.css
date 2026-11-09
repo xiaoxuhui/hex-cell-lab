@@ -24,3 +24,13 @@ canvas.panning{cursor:grabbing}.canvas-help>span:first-child{line-height:1.8}
 .golly-actions .golly-open{flex:1 1 auto;width:auto;margin:0;white-space:nowrap}
 .golly-brush{width:min(255px,60vw);max-width:100%;min-width:0;text-overflow:ellipsis}
 #golly-source{font:12px/1.7 var(--mono);max-height:32vh}
+.world-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.world-actions button{border:1px solid var(--line);border-radius:7px}
+.world-actions button[aria-pressed=true]{background:#dbeac8;color:#17341f;border-color:#91b46f}
+.world-message{font-size:12px;color:var(--green);margin:7px 0 0}
+.world-message:empty{display:none}
+#board.pan-tool:not(.panning){cursor:grab}
+#pattern-source{font:12px/1.6 var(--mono);max-height:28vh}
+.pattern-coords{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.pattern-coords label{display:grid;gap:4px;font-size:12px}
+.pattern-coords input{width:100%;min-width:0}
