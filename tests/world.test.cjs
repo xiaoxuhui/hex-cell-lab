@@ -1,11 +1,24 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { gzipSync } = require('node:zlib');
 const Core = require('../src/core.js');
 const World = require('../src/world.js');
 const Pattern = require('../src/pattern.js');
 const { Tracker } = require('../src/cycles.js');
 
 const life = Core.compile({ format: 'bs', text: 'B3/S23' });
+
+test('compressed RLE decodes locally, preserves coordinates, and rejects corrupt and oversized output', async () => {
+  const text='#CXRLE Pos=-8,9\nx=3,y=1\n3o!';
+  const compressed=gzipSync(text);
+  const decoded=await Pattern.readFile(new Blob([compressed]));
+  assert.deepEqual(Pattern.readRle(decoded),Pattern.readRle(text));
+  assert.equal(await Pattern.readFile(new Blob([text])),text);
+  assert.throws(()=>Pattern.readRle(compressed.toString('utf8')), /选择原始 \.rle\.gz/);
+  await assert.rejects(Pattern.readFile(new Blob([compressed.subarray(0,-5)])), /无法解压/);
+  const tooLarge=gzipSync(Buffer.alloc(Pattern.maxBytes+1,65));
+  await assert.rejects(Pattern.readFile(new Blob([tooLarge])), /解压后的图案超过/);
+});
 
 test('a glider steps across negative coordinates without wrapping or allocating the intervening space', () => {
   const glider = Pattern.readRle('x = 3, y = 3, rule = B3/S23\nbo$2bo$3o!');

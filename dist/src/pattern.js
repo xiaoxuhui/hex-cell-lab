@@ -6,8 +6,39 @@
 
   const maxBytes = 16 * 1024 * 1024;
 
+  async function readFile(file) {
+    if (file.size > maxBytes) throw Error('图案文件需在 16 MiB 以内。');
+    const header = new Uint8Array(await file.slice(0, 3).arrayBuffer());
+    const gzip = header[0] === 0x1f && header[1] === 0x8b && header[2] === 8;
+    if (!gzip) {
+      if (/\.gz$/i.test(file.name ?? '')) throw Error('这个文件没有有效的 gzip 文件头。请选择原始压缩文件。');
+      return file.text();
+    }
+    if (typeof DecompressionStream !== 'function') throw Error('此浏览器无法解压 gzip，请先解压为 .rle 文件再选择。');
+    const reader = file.stream().pipeThrough(new DecompressionStream('gzip')).getReader();
+    const decoder = new TextDecoder(), chunks = [];
+    let size = 0;
+    try {
+      for (;;) {
+        const { value, done } = await reader.read().catch(() => { throw Error('gzip 图案无法解压，请检查原始文件是否完整。'); });
+        if (done) break;
+        size += value.byteLength;
+        if (size > maxBytes) {
+          await reader.cancel().catch(() => {});
+          throw Error('解压后的图案超过 16 MiB。');
+        }
+        chunks.push(decoder.decode(value, { stream: true }));
+      }
+      chunks.push(decoder.decode());
+      return chunks.join('');
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
   function readRle(text) {
     if (typeof text !== 'string' || !text.trim()) throw Error('请粘贴或选择一个 RLE 图案。');
+    if (/^\u001f[\u008b\ufffd]\u0008/.test(text.trimStart())) throw Error('这段内容是 gzip 压缩数据。请直接选择原始 .rle.gz 文件，或粘贴解压后的 RLE 文本。');
     if (text.length > maxBytes || new TextEncoder().encode(text).length > maxBytes) throw Error('RLE 文件需在 16 MiB 以内。');
     const lines = text.trim().split(/\r\n|\n|\r/).map(line => line.trim());
     let position = null, header = null;
@@ -71,5 +102,5 @@
     return { runs, population: World.displayCount(population), width, height, position, rule: header?.[3]?.trim() ?? '' };
   }
 
-  return { readRle, maxBytes };
+  return { readRle, readFile, maxBytes };
 });

@@ -354,8 +354,7 @@
     const request=++patternRead;
     patternSource.value='';patternSource.disabled=true;$('pattern-place').disabled=true;$('pattern-error').hidden=true;
     try{
-      if(file.size>Pattern.maxBytes)throw Error('RLE 文件需在 16 MiB 以内。');
-      const text=await file.text();
+      const text=await Pattern.readFile(file);
       if(patternDialog.open&&request===patternRead)patternSource.value=text;
     }catch(error){if(patternDialog.open&&request===patternRead)patternError(error.message);}
     finally{
