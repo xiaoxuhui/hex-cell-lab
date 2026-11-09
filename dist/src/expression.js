@@ -10,6 +10,11 @@
   'ABCDEFGHI'.split('').forEach((name,i)=>{variables[name]=n=>n[slots[i]];});
   variables.n=n=>{let count=0;for(let i=1;i<9;i++)if(n[i]===1)count++;return count;};
   variables.sum=n=>{let total=0;for(let i=1;i<9;i++)total+=n[i];return total;};
+  variables.TT=neighborhood=>{
+    let total=neighborhood[slots[0]];
+    for(let i=1;i<slots.length;i++)total+=neighborhood[slots[i]];
+    return total;
+  };
   const unary={'!':v=>!v,'+':v=>+v,'-':v=>-v,'~':v=>~v};
   const binary={
     '+':(a,b)=>Number(a)+Number(b),'-':(a,b)=>a-b,'*':(a,b)=>a*b,'/':(a,b)=>a/b,'%':(a,b)=>a%b,'**':(a,b)=>a**b,
@@ -35,7 +40,7 @@
           if(typeof node.value!=='boolean'&&typeof node.value!=='number')throw Error('表达式只接受数字与 true/false 常量');
           return ()=>node.value;
         case 'Identifier':
-          if(!Object.hasOwn(variables,node.name))throw Error('未知变量「'+node.name+'」，请使用 A–I、n 或 sum（E 为中心）');
+          if(!Object.hasOwn(variables,node.name))throw Error('未知变量「'+node.name+'」，请使用 A–I、n、sum 或 TT（E 为中心）');
           return variables[node.name];
         case 'UnaryExpression': {
           if(!Object.hasOwn(unary,node.operator))throw Error('不支持的运算符 '+node.operator);

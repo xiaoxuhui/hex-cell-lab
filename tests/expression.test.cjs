@@ -10,6 +10,11 @@ test('functions and bitwise arithmetic support long formulas',()=>{a.equal(value
 const letters='ABCDEFGHI',slots=[8,1,2,7,0,3,6,5,4];
 for(let i=0;i<9;i++)test('row-major position '+letters[i],()=>{const values=[11,12,13,14,15,16,17,18,19],r=compile(letters[i]);a.equal(C.transition(r,values),values[slots[i]]);const board=[11,12,13,14,15,16,17,18,19];a.equal(C.step(board,3,3,r,'zero')[4],board[i]);});
 test('neighbor count excludes E and refractory values; sum is numeric',()=>{const values=[1,1,2,-2,.5,1,0,1,3];a.equal(C.transition(compile('n'),values),3);a.equal(C.transition(compile('sum'),values),6.5);});
+test('TT sums A through I exactly once including the signed fractional center',()=>{
+  const board=[1,2,3,4,-5.5,6,7,8,9];
+  a.equal(C.step(board,3,3,compile('TT'),'zero')[4],34.5);
+  a.equal(C.step(board,3,3,compile('sum'),'zero')[4],40);
+});
 test('letter expression Conway rule agrees for every binary neighborhood',()=>{const r=compile('n == 3 || (E == 1 && n == 2)'),life=C.compile({format:'bs',text:'B3/S23'});for(let mask=0;mask<512;mask++){const v=Array.from({length:9},(_,i)=>(mask>>i)&1);a.equal(C.transition(r,v),C.transition(life,v),'mask '+mask);}});
 test('long arithmetic expression calculates without rule rows',()=>{a.equal(value(Array(200).fill('1').join('+')),200);});
 test('numeric grid evolves synchronously, including negative and fractional values',()=>{const g=Array(9).fill(0);g[4]=-2.5;const original=[...g],next=C.step(g,3,3,compile('E + B / 2'),'zero');a.equal(next[4],-2.5);a.equal(next[7],-1.25);a.deepEqual(g,original);});
