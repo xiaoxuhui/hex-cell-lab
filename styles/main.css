@@ -20,3 +20,7 @@ canvas.panning{cursor:grabbing}.canvas-help>span:first-child{line-height:1.8}
 .redstone-tools{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:12px 0;border-bottom:1px solid var(--line);font-size:12px}
 .redstone-tools select{padding:5px 7px;font-size:12px}
 .redstone-tools output{flex:1 1 100%;color:var(--muted);line-height:1.6}
+.golly-actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:-8px}
+.golly-actions .golly-open{flex:1 1 auto;width:auto;margin:0;white-space:nowrap}
+.golly-brush{width:min(255px,60vw);max-width:100%;min-width:0;text-overflow:ellipsis}
+#golly-source{font:12px/1.7 var(--mono);max-height:32vh}

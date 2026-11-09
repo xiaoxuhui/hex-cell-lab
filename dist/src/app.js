@@ -2,9 +2,9 @@
 (function(){
   'use strict';
   const C=window.CellCore,P=window.CellPresets,$=id=>document.getElementById(id),canvas=$('board'),ctx=canvas.getContext('2d');
-  const R=window.CellRedstone;
+  const R=window.CellRedstone,GollyInput=window.CellGollyInput;
   const KEY='cell-lab-v1',colors=['#1a2d22','#c3e98e','#e9b966','#82b9ae','#ca93c1','#91a6db','#e18c78','#e4d983'];
-  const drafts={bs:'B3/S23',sbc:'S23/B2/C2',table:'1,0,1,0,1,0,1,*,1,1',expression:'n == 3 || (E == 1 && n == 2)'};
+  const drafts={bs:'B3/S23',sbc:'S23/B2/C2',table:'1,0,1,0,1,0,1,*,1,1',expression:'n == 3 || (E == 1 && n == 2)',golly:''};
   const presets={life:['bs','B3/S23'],seeds:['bs','B2/S'],brain:['sbc','S/B2/C3'],'user-sbc':['sbc','S23/B2/C2'],'user-table':['table','1,0,1,0,1,0,1,*,1,1'],signal:['table','0,火,*,*,*,*,*,*,*,火\n火,*,*,*,*,*,*,*,*,水\n水,*,*,*,*,*,*,*,*,0'],'expression-life':['expression','n == 3 || (E == 1 && n == 2)'],'expression-cycle':['expression','(E + B + H) % 3'],'expression-random':['expression','random([0, 1, 2, 3])'],wireworld:['expression',P.wireworld]};
   presets.redstone=['expression',R.formula];
   let format='bs',rule=C.compile({format,text:drafts.bs}),width=72,height=48,grid=Array(width*height).fill(0),generation=0,boundary='wrap';
@@ -15,6 +15,10 @@
   function updateCycle(){const found=cycle.period!==null;$('cycle-length').textContent=!cycle.enabled?'暂不检测':found?cycle.period.toLocaleString()+' 代':'检测中';$('cycle-status').classList.toggle('detected',found);$('cycle-detail').textContent=!cycle.enabled?'含随机选择的规则，重复局面不能确定循环。':found?(cycle.period===1?'棋盘已稳定，每一代保持相同。':'整张棋盘重复，演化继续。'):'完整棋盘重复后显示；较长循环可能延后确认。';}
   const color=value=>{if(P.isWireworld(rule)&&P.colors[value])return P.colors[value];if(Number.isInteger(value)&&value>=0&&value<colors.length)return colors[value];let hash=0;for(const ch of String(value))hash=(hash*31+ch.charCodeAt(0))|0;return `hsl(${Math.abs(hash)%360} 48% 68%)`;};
   const label=value=>P.isWireworld(rule)&&P.names[value]?value+' · '+P.names[value]:rule.format==='expression'?String(value):rule.labels[value];
+  function numberedLabel(value){
+    const name=rule.labels[value];
+    return name===String(value)?name:`${value} · ${name}`;
+  }
   function syncPreset(){const match=Object.entries(presets).find(([,v])=>v[0]===rule.format&&v[1]===rule.text);$('preset').value=match?match[0]:'';}
   function syncDemo(){
     const draft={format,text:$('rule-text').value.trim()};
@@ -36,12 +40,35 @@
   function pushHistory(){history.push(snapshot());if(history.length>30)history.shift();$('undo').disabled=false;}
   function saveSoon(){clearTimeout(saveTimer);saveTimer=setTimeout(()=>{try{localStorage.setItem(KEY,JSON.stringify(snapshot()));$('save-status').textContent='已自动保存在此浏览器';}catch{$('save-status').textContent='自动保存不可用，请导出备份';}},250);}
   function notice(text){$('apply-note').textContent=text;}
-  function updateStats(){const n=grid.reduce((a,b)=>a+(b!==0),0);$('generation').textContent=generation.toLocaleString();$('population').textContent=n.toLocaleString();$('density').textContent=(100*n/grid.length).toFixed(1)+'%';$('active-rule').textContent=R.isPreset(rule)?'红石电路':P.isWireworld(rule)?'电线世界':rule.format==='expression'?'表达式':rule.format==='table'?rule.rules.length+' 条规则':rule.text.toUpperCase().replace(/\s/g,'');$('active-rule').title=rule.text;$('rule-kind').textContent=R.isPreset(rule)?'表达式 · 四方向':P.isWireworld(rule)?'表达式 · 4 状态':rule.format==='expression'?'布尔 / 数值':(rule.format==='table'?'自定义':rule.format==='bs'?'B/S':'SBC')+' · '+rule.count+' 状态';$('board-size').textContent=width+' × '+height+' ▾';$('board-size').setAttribute('aria-label','设置棋盘尺寸，当前 '+width+' × '+height);}
+  function updateStats(){
+    const n=grid.reduce((a,b)=>a+(b!==0),0);
+    $('generation').textContent=generation.toLocaleString();$('population').textContent=n.toLocaleString();
+    $('density').textContent=(100*n/grid.length).toFixed(1)+'%';
+    if(rule.format==='golly'){
+      $('active-rule').textContent=rule.name;$('active-rule').title=rule.name;
+      $('rule-kind').textContent=`Golly · ${rule.count} 状态`;
+    }else{
+      $('active-rule').textContent=R.isPreset(rule)?'红石电路':P.isWireworld(rule)?'电线世界':rule.format==='expression'?'表达式':rule.format==='table'?rule.rules.length+' 条规则':rule.text.toUpperCase().replace(/\s/g,'');
+      $('active-rule').title=rule.text;
+      $('rule-kind').textContent=R.isPreset(rule)?'表达式 · 四方向':P.isWireworld(rule)?'表达式 · 4 状态':rule.format==='expression'?'布尔 / 数值':(rule.format==='table'?'自定义':rule.format==='bs'?'B/S':'SBC')+' · '+rule.count+' 状态';
+    }
+    $('board-size').textContent=width+' × '+height+' ▾';$('board-size').setAttribute('aria-label','设置棋盘尺寸，当前 '+width+' × '+height);
+  }
   function palette(){
-    const p=$('palette'),redstone=R.isPreset(rule),numeric=rule.format==='expression'&&!redstone;
+    const p=$('palette'),redstone=R.isPreset(rule),numeric=rule.format==='expression'&&!redstone,golly=rule.format==='golly';
     p.replaceChildren();p.classList.toggle('redstone-palette',redstone);
     const values=redstone?redstoneBrushes():numeric?[...new Set([0,1,2,3,brush])]:Array.from({length:rule.count},(_,i)=>i);
-    for(const value of values){
+    if(golly){
+      const select=document.createElement('select');
+      select.className='golly-brush';select.setAttribute('aria-label','选择 Golly 绘制状态');
+      for(const value of values)select.add(new Option(numberedLabel(value),value));
+      select.value=String(brush);
+      select.onchange=()=>{
+        brush=Number(select.value);erasing=false;inspecting=false;
+        $('eraser').setAttribute('aria-pressed','false');$('inspect').setAttribute('aria-pressed','false');
+      };
+      p.append(select);
+    }else for(const value of values){
       const b=document.createElement('button'),part=redstone?R.parts[value]:null;
       b.className='swatch';b.style.setProperty('--swatch',part?part.color:color(value));
       b.textContent=part?part.name:label(value);
@@ -78,20 +105,28 @@
   function setRunning(value){if(value===running)return;running=value;clearTimeout(timer);$('play').querySelector('span').textContent=value?'暂停演化':'开始演化';$('play').firstChild.textContent=value?'Ⅱ ':'▶ ';$('run-status').textContent=value?'正在生长':'等待生长';$('status-dot').classList.toggle('running',value);$('step').disabled=value;if(value){pushHistory();tick();}}
   function evolve(remember=false){try{const next=C.step(grid,width,height,rule,boundary);if(remember)pushHistory();grid=next;generation++;cycle.observe(grid,generation);refresh();return true;}catch(e){setRunning(false);ruleError(e.message);notice('演化已暂停，棋盘与代数保留在最后成功的一代。');return false;}}
   function tick(){if(!running)return;if(evolve()&&running)timer=setTimeout(tick,1000/Number($('speed').value));}
-  function setFormat(next,remember=true){if(remember)drafts[format]=$('rule-text').value;format=next;$('rule-text').value=drafts[next];document.querySelectorAll('[data-format]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.format===next)));$('custom-options').hidden=next!=='table';$('expand').hidden=next!=='table';$('expression-help').hidden=next!=='expression';$('rule-text').rows=next==='table'||next==='expression'?5:3;
+  function setFormat(next,remember=true){if(remember)drafts[format]=$('rule-text').value;format=next;$('rule-text').value=drafts[next];document.querySelectorAll('[data-format]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.format===next)));$('custom-options').hidden=next!=='table';$('expand').hidden=next!=='table';$('expression-help').hidden=next!=='expression';$('rule-text').rows=['table','expression','golly'].includes(next)?5:3;
     $('rule-description').textContent=next==='bs'?'B 指出生，S 指存活。B3/S23：有 3 个活邻居时出生，有 2 或 3 个活邻居时存活。':next==='sbc'?'S 指存活，B 指出生，C 指状态总数。仅状态 1 计入活邻居；失活后依次经过 2…C−1，再回到 0。C2 只有空白与活跃两种状态。':next==='expression'?'直接写下一状态的公式。布尔结果 true/false 对应 1/0；数值结果原样保留，可为小数或负数。在表达式里，* 是乘号。':'每行 10 项，用逗号分隔；多条规则用换行或 / 分隔。* 匹配任意状态，结果不能是 *。从上到下，第一条匹配的规则生效。';
     $('order-help').textContent=next==='table'?'中心,上,右上,右,右下,下,左下,左,左上,结果':next==='expression'?'A B C / D E F / G H I · E 为中心，结果作为 E 的下一状态。':'按顺时针读取邻居，所有元胞同时更新。';
+    if(next==='golly'){
+      $('rule-description').textContent='导入的 Golly 规则保留原有转移。可以检查或编辑完整规则文本，再点击“应用规则”。';
+      $('order-help').textContent='使用 Golly 规则声明的四邻域或八邻域。';
+    }
     document.querySelectorAll('.neighborhood b').forEach((b,i)=>{b.textContent=next==='expression'?'ABCDEFGHI'[i]:[8,1,2,7,0,3,6,5,4][i];});markDirty();}
   function markDirty(){dirty=true;$('draft-status').textContent='尚未应用';$('rule-error').hidden=true;syncDemo();}
   function applied(){dirty=false;$('draft-status').textContent='已应用';$('rule-error').hidden=true;syncDemo();syncPreset();}
   function applyRule(){try{
     const settings=spec(),next=C.compile(settings);let changed=0,textStates=0;
     const converted=grid.map(v=>{
+      if(next.format==='golly'){
+        if(Number.isInteger(v)&&v>=0&&v<next.count)return v;
+        changed++;return 0;
+      }
       if(next.format==='expression'){
-        if(rule.format==='expression')return v;
+        if(rule.format==='expression'||rule.format==='golly')return v;
         const numeric=Number(rule.labels[v]);if(Number.isFinite(numeric))return numeric;textStates++;return v;
       }
-      const name=rule.format==='expression'?String(v):rule.labels[v],index=next.labels.indexOf(name);
+      const name=rule.format==='expression'||rule.format==='golly'?String(v):rule.labels[v],index=next.labels.indexOf(name);
       if(index<0){changed++;return 0;}return index;
     });
     if(next.format==='expression')C.step(converted,width,height,C.compile(settings,{random:()=>0}),boundary);
@@ -110,7 +145,7 @@
       const part=R.parts[value];
       $('coordinate').textContent=position+(part?' · '+part.name:'');
       $('redstone-reading').textContent=part&&part.kind!=='empty'?`${position} · ${R.describe(value)}`:'悬停在元件上，或选择“查看”后点按元件。';
-    }else $('coordinate').textContent=position+(valid?' · 状态 '+label(value):'');
+    }else $('coordinate').textContent=position+(valid?' · 状态 '+(rule.format==='golly'?numberedLabel(value):label(value)):'');
   }
   function paintTo(point){if(lastCell){let {x,y}=lastCell,dx=Math.abs(point.x-x),dy=-Math.abs(point.y-y),sx=x<point.x?1:-1,sy=y<point.y?1:-1,err=dx+dy;for(let n=0;n<1000;n++){paintCell(x,y);if(x===point.x&&y===point.y)break;const e=2*err;if(e>=dy){err+=dy;x+=sx;}if(e<=dx){err+=dx;y+=sy;}}}else paintCell(point.x,point.y);lastCell=point;resetCycle();refresh();showCell(point);}
   canvas.addEventListener('pointerdown',e=>{
@@ -163,6 +198,46 @@
   $('expand').onclick=()=>{try{const r=C.compile(spec()),e=C.expansion(r);$('expansion-info').textContent='共 '+e.total.toLocaleString()+' 条，展示前 '+e.lines.length+' 条（保持原有优先顺序）。';$('expansion-lines').textContent=e.lines.join('\n');$('expansion-dialog').showModal();}catch(e){$('rule-error').textContent=e.message;$('rule-error').hidden=false;}};$('close-dialog').onclick=()=>$('expansion-dialog').close();
   $('export').onclick=()=>{const blob=new Blob([JSON.stringify(snapshot(),null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='cell-lab-generation-'+generation+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);notice('已导出当前棋盘与已应用规则'+(dirty?'；未应用的草稿未导出。':'。'));};
   $('import').onclick=()=>$('file').click();$('file').onchange=async()=>{const f=$('file').files[0];if(!f)return;try{if(f.size>2000000)throw Error('文件大小不能超过 2 MB');const s=C.validateSave(JSON.parse(await f.text()));pushHistory();restore(s,true);notice('存档已导入。');}catch(e){$('rule-error').textContent='导入失败：'+e.message;$('rule-error').hidden=false;}$('file').value='';};
+  const gollyImportDialog=$('golly-import-dialog'),gollySource=$('golly-source');
+  let fileRead=0;
+  function showImportError(message){
+    $('golly-import-error').textContent=message;$('golly-import-error').hidden=false;
+  }
+  $('golly-import-open').onclick=()=>{
+    fileRead++;
+    gollySource.value='';gollySource.disabled=false;$('golly-load').disabled=false;
+    $('golly-import-error').hidden=true;
+    gollyImportDialog.showModal();
+  };
+  $('golly-import-close').onclick=()=>gollyImportDialog.close();
+  $('golly-pick-file').onclick=()=>$('golly-file').click();
+  $('golly-file').onchange=async event=>{
+    const input=event.currentTarget,file=input.files[0];
+    input.value='';if(!file)return;
+    const request=++fileRead;
+    gollySource.value='';gollySource.disabled=true;$('golly-load').disabled=true;$('golly-import-error').hidden=true;
+    try{
+      if(file.size>GollyInput.maxBytes)throw Error('Golly 规则文件需在 1 MiB 以内');
+      const text=await file.text();
+      if(gollyImportDialog.open&&request===fileRead)gollySource.value=text;
+    }catch(error){if(gollyImportDialog.open&&request===fileRead)showImportError(error.message);}
+    finally{
+      if(gollyImportDialog.open&&request===fileRead){gollySource.disabled=false;$('golly-load').disabled=false;gollySource.focus();}
+    }
+  };
+  gollySource.oninput=()=>$('golly-import-error').hidden=true;
+  $('golly-import-form').onsubmit=event=>{
+    event.preventDefault();
+    try{
+      const next=GollyInput.sourceSpec(gollySource.value);
+      C.compile(next);
+      drafts[format]=$('rule-text').value;drafts[next.format]=next.text;
+      setFormat(next.format,false);
+      gollyImportDialog.close();
+      notice('Golly 规则已载入编辑器。点击“应用规则”开始使用。');
+      $('apply').focus();
+    }catch(error){showImportError(error.message);}
+  };
   let gollyRule=null,gollyResult=null,gollyAbort=null;
   function clearGolly(){if(gollyAbort)gollyAbort.abort();gollyAbort=null;gollyResult=null;$('golly-output').value='';$('golly-copy').disabled=true;$('golly-download').hidden=true;$('golly-instructions').textContent='';$('golly-error').hidden=true;$('golly-status').textContent='';$('golly-generate').disabled=false;}
   async function generateGolly(){
@@ -185,7 +260,7 @@
   $('golly-close').onclick=()=>$('golly-dialog').close();$('golly-dialog').addEventListener('close',clearGolly);$('golly-dialog').addEventListener('cancel',clearGolly);$('golly-generate').onclick=generateGolly;$('golly-count').onchange=clearGolly;
   $('golly-copy').onclick=async()=>{const result=gollyResult;if(!result)return;try{await navigator.clipboard.writeText(result.text);if(gollyResult===result&&$('golly-dialog').open)$('golly-status').textContent='已复制，请按下方步骤在 Golly 中粘贴。';}catch{if(gollyResult!==result||!$('golly-dialog').open)return;$('golly-output').focus();$('golly-output').select();$('golly-status').textContent='自动复制不可用，内容已选中。请按 Ctrl+C（手机长按复制），再到 Golly 粘贴。';}};
   $('golly-download').onclick=()=>{if(!gollyResult||gollyResult.kind!=='rule')return;const url=URL.createObjectURL(new Blob([gollyResult.text],{type:'text/plain;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download=gollyResult.filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
-  document.addEventListener('keydown',e=>{if(e.code==='Space'&&!e.repeat&&!/INPUT|TEXTAREA|SELECT|BUTTON/.test(e.target.tagName)&&!$('expansion-dialog').open&&!$('size-dialog').open&&!$('golly-dialog').open){e.preventDefault();setRunning(!running);}});
+  document.addEventListener('keydown',e=>{if(e.code==='Space'&&!e.repeat&&!/INPUT|TEXTAREA|SELECT|BUTTON/.test(e.target.tagName)&&!document.querySelector('dialog[open]')){e.preventDefault();setRunning(!running);}});
   window.addEventListener('blur',()=>endStroke());document.addEventListener('visibilitychange',()=>{if(document.hidden){endStroke();setRunning(false);}});window.addEventListener('pagehide',()=>{try{localStorage.setItem(KEY,JSON.stringify(snapshot()));}catch{/* Existing save status already exposes storage availability. */}});
   new ResizeObserver(draw).observe($('canvas-wrap'));
   // A deterministic seed keeps the first visit interesting and reproducible.

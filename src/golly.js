@@ -54,6 +54,10 @@
   }
   async function convert(rule,options={}){
     abort(options.signal);
+    if(rule.format==='golly'){
+      if(rule.nativeAlgorithm==='Generations')return stringRule(rule.text,'Generations');
+      return {kind:'rule',text:rule.text+'\n',algorithm:'RuleLoader',ruleName:rule.name,filename:rule.name+'.rule'};
+    }
     if(rule.format==='bs')return stringRule('B'+digits(rule.birth)+'/S'+digits(rule.survive),'QuickLife');
     if(rule.format==='sbc'){
       if(!rule.birth.has(0))return stringRule(digits(rule.survive)+'/'+digits(rule.birth)+'/'+rule.count,'Generations');
