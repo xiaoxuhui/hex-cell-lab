@@ -4,7 +4,7 @@
 })(globalThis, function (Core) {
   'use strict';
 
-  const maxRuns = 1000000;
+  const maxRuns = 3000000;
   const maxCoordinate = Math.floor(Number.MAX_SAFE_INTEGER / 4);
   const validCoordinate = value => Number.isSafeInteger(value) && Math.abs(value) <= maxCoordinate;
   const validState = (rule, value) => rule.format === 'expression'
@@ -88,7 +88,7 @@
     replaceRow(y, row) {
       const old = this.rows.get(y) ?? emptyRow;
       const count = this.runCount + row.length - old.length;
-      if (count > maxRuns) throw Error('图案区段超过 100 万。请把图案分开运行。');
+      if (count > maxRuns) throw Error('图案区段超过 300 万。请把图案分开运行。');
       if (row.length) {
         validateRange(row[0][0], y, row.at(-1)[1] - row[0][0]);
         this.rows.set(y, row);
@@ -128,6 +128,15 @@
         for (let i = 1; i < row.length; i++) if (row[i - 1][1] > row[i][0]) throw Error('图案或存档含重复、重叠的坐标。');
       }
       for (const [y, row] of updates) this.paintRow(y, row);
+    }
+
+    overlayBoard(source, dx, dy) {
+      for (const [y, row] of source.rows) {
+        const shifted = dx === 0 ? row : row.map(([start, end, value]) => [start + dx, end + dx, value]);
+        const targetY = y + dy;
+        if (Object.is(this.background, source.background) && !this.rows.has(targetY)) this.replaceRow(targetY, shifted);
+        else this.paintRow(targetY, shifted);
+      }
     }
 
     *runs(left = -Infinity, top = -Infinity, right = Infinity, bottom = Infinity) {

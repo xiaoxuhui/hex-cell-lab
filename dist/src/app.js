@@ -62,7 +62,12 @@
     while(history.length>1&&(history.length>30||records>300000))records-=history.shift().board?.runCount??0;
     $('undo').disabled=false;
   }
-  function saveSoon(){clearTimeout(saveTimer);saveTimer=setTimeout(()=>{try{localStorage.setItem(KEY,JSON.stringify(snapshot()));$('save-status').textContent='已自动保存在此浏览器';}catch{$('save-status').textContent='自动保存不可用，请导出备份';}},250);}
+  function saveLocally(){
+    if(sparse?.runCount>500000){$('save-status').textContent='大图请用「导出」保存到文件';return;}
+    try{localStorage.setItem(KEY,JSON.stringify(snapshot()));$('save-status').textContent='已自动保存在此浏览器';}
+    catch{$('save-status').textContent='自动保存不可用，请导出备份';}
+  }
+  function saveSoon(){clearTimeout(saveTimer);saveTimer=setTimeout(saveLocally,250);}
   function notice(text){$('apply-note').textContent=text;}
   function worldMessage(text){$('world-message').textContent=text;}
   function updateStats(){
@@ -117,6 +122,28 @@
     ctx.font=`bold ${Math.min(24,size*.78)}px system-ui`;
     ctx.fillText(mark,x+size/2,y+size/2);
   }
+  let overviewCanvas;
+  function drawBinaryOverview(r,visible){
+    const {size,ox,oy}=view,w=Math.ceil(r.width),h=Math.ceil(r.height);
+    if(!overviewCanvas)overviewCanvas=document.createElement('canvas');
+    if(overviewCanvas.width!==w)overviewCanvas.width=w;
+    if(overviewCanvas.height!==h)overviewCanvas.height=h;
+    const overview=overviewCanvas.getContext('2d'),image=overview.createImageData(w,h);
+    const pixels=new Uint32Array(image.data.buffer);
+    const pack=rgb=>new Uint32Array(Uint8Array.from([...rgb,255]).buffer)[0];
+    const dark=pack([23,40,31]),light=pack([195,233,142]);
+    for(const [x,y,end,value] of visible){
+      const row=Math.max(0,Math.floor(oy+(y-originY)*size));
+      const start=Math.max(0,Math.floor(ox+(x-originX)*size));
+      if(row>=h||start>=w)continue;
+      const stop=Math.min(w,Math.max(start+1,Math.ceil(ox+(end-originX)*size)));
+      const at=row*w+start,pixel=value?light:dark;
+      if(stop===start+1)pixels[at]=pixel;
+      else pixels.fill(pixel,at,row*w+stop);
+    }
+    overview.putImageData(image,0,0);
+    ctx.save();ctx.imageSmoothingEnabled=false;ctx.drawImage(overviewCanvas,0,0,r.width,r.height);ctx.restore();
+  }
   function drawInfinite(r){
     const {size,ox,oy}=view;
     const redstone=R.isPreset(rule),background=sparse.background;
@@ -124,7 +151,9 @@
     if(background!==0){ctx.fillStyle=cellColor(background);ctx.fillRect(0,0,r.width,r.height);}
     const left=originX+Math.floor(-ox/size),right=originX+Math.ceil((r.width-ox)/size);
     const top=originY+Math.floor(-oy/size),bottom=originY+Math.ceil((r.height-oy)/size);
-    for(const [x,y,end,value] of sparse.runs(left,top,right,bottom)){
+    const visible=sparse.runs(left,top,right,bottom);
+    if(size<1&&rule.format==='bs'&&sparse.runCount>100000){drawBinaryOverview(r,visible);return;}
+    for(const [x,y,end,value] of visible){
       const px=ox+(x-originX)*size,py=oy+(y-originY)*size;
       ctx.fillStyle=cellColor(value);
       const inset=size>=3?.6:0;
@@ -349,6 +378,15 @@
   };
   $('pattern-close').onclick=()=>patternDialog.close();
   $('pattern-pick').onclick=()=>$('pattern-file').click();
+  patternSource.addEventListener('paste',event=>{
+    const text=event.clipboardData?.getData('text/plain');
+    if(!text||text.length<50000)return;
+    event.preventDefault();
+    const start=patternSource.selectionStart,end=patternSource.selectionEnd;
+    if(patternSource.value.length-end+start+text.length>Pattern.maxBytes){patternError('图案文本需在 16 MiB 以内。');return;}
+    patternSource.setRangeText(text,start,end,'end');
+    $('pattern-error').hidden=true;
+  });
   $('pattern-file').onchange=async event=>{
     const input=event.currentTarget,file=input.files[0];input.value='';if(!file)return;
     const request=++patternRead;
@@ -365,35 +403,31 @@
   $('pattern-form').onsubmit=event=>{
     event.preventDefault();
     try{
-      const pattern=Pattern.readRle(patternSource.value),[cx,cy]=viewportFocus();
+      const pattern=Pattern.readPattern(patternSource.value),[cx,cy]=viewportFocus();
       const fallback=pattern.position??[cx-Math.floor(pattern.width/2),cy-Math.floor(pattern.height/2)];
       const [x0,y0]=['pattern-x','pattern-y'].map((id,i)=>$(id).value.trim()?Number($(id).value):fallback[i]);
       if(!W.validCoordinate(x0)||!W.validCoordinate(y0))throw Error('左上角坐标须为可精确计算的整数。');
-      let useInfinite=Boolean(sparse);
-      const bounds={minX:Infinity,minY:Infinity,maxX:-Infinity,maxY:-Infinity};
-      const runs=pattern.runs.map(([x,y,length,value])=>{
-        x+=x0;y+=y0;
-        const last=x+length-1;
-        if(!W.validCoordinate(x)||!W.validCoordinate(last)||!W.validCoordinate(y))throw Error('图案放置后超出坐标范围。');
-        if(!W.validState(rule,value))throw Error(`图案使用状态 ${value}${pattern.rule?`（${pattern.rule.slice(0,80)}）`:''}，请先应用支持该状态的规则。`);
-        if(!inside(x,y)||!inside(last,y))useInfinite=true;
-        bounds.minX=Math.min(bounds.minX,x);bounds.maxX=Math.max(bounds.maxX,last);
-        bounds.minY=Math.min(bounds.minY,y);bounds.maxY=Math.max(bounds.maxY,y);
-        return [x,y,length,value];
-      });
+      const dx=x0-pattern.origin[0],dy=y0-pattern.origin[1],source=pattern.board.bounds();
+      const bounds={minX:source.minX+dx,minY:source.minY+dy,maxX:source.maxX+dx,maxY:source.maxY+dy};
+      if(!Object.values(bounds).every(W.validCoordinate))throw Error('图案放置后超出坐标范围。');
+      if(!W.validState(rule,pattern.maxState))throw Error(`图案使用状态 ${pattern.maxState}${pattern.rule?`（${pattern.rule.slice(0,80)}）`:''}，请先应用支持该状态的规则。`);
+      const useInfinite=Boolean(sparse)||!inside(bounds.minX,bounds.minY)||!inside(bounds.maxX,bounds.maxY);
       let next;
       if(useInfinite){
         W.requireDeterministic(rule);next=sparse?sparse.copy():W.fromDense(grid,width);
-        next.overlay(runs);
+        next.overlayBoard(pattern.board,dx,dy);
       }else{
         next=grid.slice();
-        for(const [x,y,length,value] of runs)next.fill(value,y*width+x,y*width+x+length);
+        for(const [x,y,end,value] of pattern.board.runs()){
+          const offset=(y+dy)*width+dx;
+          next.fill(value,offset+x,offset+end);
+        }
       }
       const switched=useInfinite&&!sparse;
       setRunning(false);endStroke();pushHistory();
       if(useInfinite){sparse=next;grid=[];}else grid=next;
       hoveredCell=null;patternDialog.close();fitBoard(null,bounds);resetCycle();refresh();
-      const message=`已放置 ${pattern.population.toLocaleString()} 个元胞，左上角 (${x0}, ${y0})。`;
+      const message=`已放置 ${pattern.board.size.toLocaleString()} 个元胞，左上角 (${x0}, ${y0})。`;
       worldMessage(message+(switched?' 已切换到无限棋盘。':''));
       $('board').focus({preventScroll:true});$('board').scrollIntoView({block:'nearest'});
     }catch(error){patternError(error.message);}
@@ -461,7 +495,7 @@
   $('golly-copy').onclick=async()=>{const result=gollyResult;if(!result)return;try{await navigator.clipboard.writeText(result.text);if(gollyResult===result&&$('golly-dialog').open)$('golly-status').textContent='已复制，请按下方步骤在 Golly 中粘贴。';}catch{if(gollyResult!==result||!$('golly-dialog').open)return;$('golly-output').focus();$('golly-output').select();$('golly-status').textContent='自动复制不可用，内容已选中。请按 Ctrl+C（手机长按复制），再到 Golly 粘贴。';}};
   $('golly-download').onclick=()=>{if(!gollyResult||gollyResult.kind!=='rule')return;const url=URL.createObjectURL(new Blob([gollyResult.text],{type:'text/plain;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download=gollyResult.filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
   document.addEventListener('keydown',e=>{if(e.code==='Space'&&!e.repeat&&!/INPUT|TEXTAREA|SELECT|BUTTON/.test(e.target.tagName)&&!document.querySelector('dialog[open]')){e.preventDefault();setRunning(!running);}});
-  window.addEventListener('blur',()=>endStroke());document.addEventListener('visibilitychange',()=>{if(document.hidden){endStroke();setRunning(false);}});window.addEventListener('pagehide',()=>{try{localStorage.setItem(KEY,JSON.stringify(snapshot()));}catch{/* Existing save status already exposes storage availability. */}});
+  window.addEventListener('blur',()=>endStroke());document.addEventListener('visibilitychange',()=>{if(document.hidden){endStroke();setRunning(false);}});window.addEventListener('pagehide',saveLocally);
   new ResizeObserver(draw).observe($('canvas-wrap'));
   // A deterministic seed keeps the first visit interesting and reproducible.
   let seed=7289;

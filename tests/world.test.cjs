@@ -20,6 +20,24 @@ test('compressed RLE decodes locally, preserves coordinates, and rejects corrupt
   await assert.rejects(Pattern.readFile(new Blob([tooLarge])), /解压后的图案超过/);
 });
 
+test('Macrocell uses Golly absolute coordinates for shared binary and multistate nodes', async () => {
+  const source='[M2] (golly 5.0)\n#R B3/S23\n**$.*$\n4 1 0 0 1';
+  const pattern=Pattern.readPattern(await Pattern.readFile(new Blob([gzipSync(source)])));
+  assert.equal(pattern.rule,'B3/S23');
+  assert.deepEqual(pattern.position,[-8,-7]);
+  assert.equal(pattern.board.size,6);
+  assert.deepEqual(World.encodeBoard(pattern.board).runs,[[-8,-7,2,1],[-7,-6,1,1],[0,1,2,1],[1,2,1,1]]);
+  const multi=Pattern.readPattern('[M2]\n#R WireWorld\n1 0 2 3 1\n2 1 0 0 1');
+  assert.equal(multi.maxState,3);
+  assert.equal(multi.board.get(-1,-1),2);
+  assert.equal(multi.board.get(0,2),3);
+  const moved=new World.SparseBoard();moved.overlayBoard(multi.board,7,-9);
+  assert.equal(moved.get(6,-10),2);
+  assert.equal(multi.board.get(-1,-1),2);
+  assert.throws(()=>Pattern.readPattern('[M2]\n4 1 0 0 0'),/子节点/);
+  assert.throws(()=>Pattern.readPattern('[M2]\n*********'),/叶节点超出/);
+});
+
 test('a glider steps across negative coordinates without wrapping or allocating the intervening space', () => {
   const glider = Pattern.readRle('x = 3, y = 3, rule = B3/S23\nbo$2bo$3o!');
   let board = new World.SparseBoard();
