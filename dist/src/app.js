@@ -14,14 +14,17 @@
   let sparse=null,originX=0,originY=0,sparseTile=18;
   const finiteCycle=new window.CellCycles.Tracker({advance:state=>C.step(state,width,height,rule,boundary)});
   const infiniteCycle=new window.CellCycles.Tracker({variableLength:true});
+  const cycleRunBudget=100000;
   let cycle=finiteCycle;
+  const cycleTooLarge=()=>sparse&&sparse.runCount>cycleRunBudget;
   function resetCycle(){
     const tracker=sparse?infiniteCycle:finiteCycle;
     if(tracker!==cycle)cycle.reset([],generation,false);
     cycle=tracker;
-    cycle.reset(sparse?sparse.signature():grid,generation,rule.deterministic);
+    const enabled=rule.deterministic&&!cycleTooLarge();
+    cycle.reset(enabled&&sparse?sparse.signature():grid,generation,enabled);
   }
-  function updateCycle(){const found=cycle.period!==null;$('cycle-length').textContent=!cycle.enabled?'暂不检测':found?cycle.period.toLocaleString()+' 代':'检测中';$('cycle-status').classList.toggle('detected',found);$('cycle-detail').textContent=!cycle.enabled?'含随机选择的规则，重复局面不能确定循环。':found?(cycle.period===1?'棋盘已稳定，每一代保持相同。':'整张棋盘重复，演化继续。'):'完整棋盘重复后显示；较长循环可能延后确认。';}
+  function updateCycle(){const found=cycle.period!==null;$('cycle-length').textContent=!cycle.enabled?'暂不检测':found?cycle.period.toLocaleString()+' 代':'检测中';$('cycle-status').classList.toggle('detected',found);$('cycle-detail').textContent=!cycle.enabled?(cycleTooLarge()?'图案区段较多，暂不保留周期快照。':'含随机选择的规则，重复局面不能确定循环。'):found?(cycle.period===1?'棋盘已稳定，每一代保持相同。':'整张棋盘重复，演化继续。'):'完整棋盘重复后显示；较长循环可能延后确认。';}
   const color=value=>{if(P.isWireworld(rule)&&P.colors[value])return P.colors[value];if(Number.isInteger(value)&&value>=0&&value<colors.length)return colors[value];let hash=0;for(const ch of String(value))hash=(hash*31+ch.charCodeAt(0))|0;return `hsl(${Math.abs(hash)%360} 48% 68%)`;};
   const label=value=>P.isWireworld(rule)&&P.names[value]?value+' · '+P.names[value]:rule.format==='expression'?String(value):rule.labels[value];
   function numberedLabel(value){
@@ -45,15 +48,18 @@
     $('numeric-brush').value=String(brush);
   }
   function spec(){return {format,text:$('rule-text').value,labels:$('state-labels').value,fallback:$('fallback').value};}
+  const saveFields=()=>({width,height,generation,boundary,rule:C.ruleSpec(rule)});
+  const saveView=()=>({focus:viewportFocus(),cellSize:Math.min(120,view.size??18)});
   function snapshot(){
-    const common={width,height,generation,boundary,rule:C.ruleSpec(rule)};
-    return sparse?{version:2,world:'infinite',...common,...W.encodeBoard(sparse),focus:viewportFocus()}
+    const common=saveFields();
+    return sparse?{version:3,world:'infinite',...common,...W.encodeBoard(sparse),...saveView()}
       :{version:1,...common,grid:[...grid]};
   }
   function pushHistory(){
-    history.push(snapshot());
-    let records=history.reduce((total,save)=>total+(save.cells?.length??0),0);
-    while(history.length>30||records>300000)records-=history.shift().cells?.length??0;
+    history.push(sparse?{save:{...saveFields(),...saveView()},board:sparse.copy()}
+      :{save:snapshot(),board:null});
+    let records=history.reduce((total,entry)=>total+(entry.board?.runCount??0),0);
+    while(history.length>1&&(history.length>30||records>300000))records-=history.shift().board?.runCount??0;
     $('undo').disabled=false;
   }
   function saveSoon(){clearTimeout(saveTimer);saveTimer=setTimeout(()=>{try{localStorage.setItem(KEY,JSON.stringify(snapshot()));$('save-status').textContent='已自动保存在此浏览器';}catch{$('save-status').textContent='自动保存不可用，请导出备份';}},250);}
@@ -116,19 +122,23 @@
     const redstone=R.isPreset(rule),background=sparse.background;
     const cellColor=value=>value===0?'#17281f':(redstone?R.parts[value]?.color:null)??color(value);
     if(background!==0){ctx.fillStyle=cellColor(background);ctx.fillRect(0,0,r.width,r.height);}
+    const left=originX+Math.floor(-ox/size),right=originX+Math.ceil((r.width-ox)/size);
+    const top=originY+Math.floor(-oy/size),bottom=originY+Math.ceil((r.height-oy)/size);
+    for(const [x,y,end,value] of sparse.runs(left,top,right,bottom)){
+      const px=ox+(x-originX)*size,py=oy+(y-originY)*size;
+      ctx.fillStyle=cellColor(value);
+      const inset=size>=3?.6:0;
+      ctx.fillRect(px,py+inset,Math.max(1,(end-x)*size),Math.max(1,size-2*inset));
+      const part=redstone?R.parts[value]:null;
+      if(size>=9&&part&&(part.kind==='block'||part.direction!==undefined)){
+        for(let xx=x;xx<end;xx++)drawRedstoneMark(part,px+(xx-x)*size,py,size);
+      }
+    }
     if(showGrid&&size>=6){
       ctx.strokeStyle=background===0?'#43634452':'#17281f55';ctx.lineWidth=.6;ctx.beginPath();
       for(let x=((ox%size)+size)%size;x<=r.width;x+=size){ctx.moveTo(x,0);ctx.lineTo(x,r.height);}
       for(let y=((oy%size)+size)%size;y<=r.height;y+=size){ctx.moveTo(0,y);ctx.lineTo(r.width,y);}
       ctx.stroke();
-    }
-    for(const [x,y,value] of sparse.entries()){
-      const px=ox+(x-originX)*size,py=oy+(y-originY)*size;
-      if(px+size<0||py+size<0||px>r.width||py>r.height)continue;
-      ctx.fillStyle=cellColor(value);
-      const inset=size>=3?.6:0;
-      ctx.fillRect(px+inset,py+inset,Math.max(1,size-2*inset),Math.max(1,size-2*inset));
-      if(redstone&&R.parts[value])drawRedstoneMark(R.parts[value],px,py,size);
     }
   }
   function draw(){const r=canvas.getBoundingClientRect();if(!r.width||!r.height)return;const dpr=Math.min(window.devicePixelRatio||1,3),w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle='#17281f';ctx.fillRect(0,0,r.width,r.height);
@@ -158,7 +168,9 @@
     if(remember)pushHistory();
     if(sparse)sparse=next;else grid=next;
     generation++;
-    if(cycle.period===null)cycle.observe(sparse?sparse.signature():grid,generation);
+    const trackCycle=!cycleTooLarge();
+    if(sparse&&cycle.enabled!==trackCycle)resetCycle();
+    else if(cycle.enabled&&cycle.period===null)cycle.observe(sparse?sparse.signature():grid,generation);
     refresh();return true;
   }catch(e){setRunning(false);ruleError(e.message);notice('演化已暂停，棋盘与代数保留在最后成功的一代。');return false;}}
   function tick(){if(!running)return;if(evolve()&&running)timer=setTimeout(tick,1000/Number($('speed').value));}
@@ -199,7 +211,7 @@
   function restore(raw,retainHistory=false,{save:s,board}=W.decodeSave(raw)){
     setRunning(false);endStroke();if(!retainHistory)history=[];
     width=s.width;height=s.height;grid=s.grid??[];sparse=board;generation=s.generation;boundary=s.boundary;rule=C.compile(s.rule);
-    hoveredCell=null;worldMessage('');fitBoard(s.focus);resetCycle();drafts[rule.format]=rule.text;$('state-labels').value=rule.labels.join(',');$('fallback').value=rule.fallback||'keep';
+    hoveredCell=null;worldMessage('');fitBoard(s.focus,null,s.cellSize);resetCycle();drafts[rule.format]=rule.text;$('state-labels').value=rule.labels.join(',');$('fallback').value=rule.fallback||'keep';
     setFormat(rule.format,false);$('boundary').value=boundary;validateBrush();applied();palette();$('undo').disabled=!history.length;refresh();
   }
   function pointAt(px,py){
@@ -245,7 +257,7 @@
   canvas.addEventListener('pointerup',endStroke);canvas.addEventListener('pointercancel',endStroke);canvas.addEventListener('lostpointercapture',endStroke);canvas.addEventListener('contextmenu',e=>e.preventDefault());canvas.addEventListener('auxclick',e=>{if(e.button===1)e.preventDefault();});
   canvas.addEventListener('wheel',e=>{if(!e.deltaY)return;e.preventDefault();endStroke();const r=canvas.getBoundingClientRect(),delta=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?r.height:1);setZoom(zoom*Math.exp(-Math.max(-.7,Math.min(.7,delta*.002))),{x:e.clientX-r.left,y:e.clientY-r.top});showCell(locate(e));},{passive:false});
   $('play').onclick=()=>setRunning(!running);$('step').onclick=()=>evolve(true);
-  $('undo').onclick=()=>{if(history.length){restore(history.pop(),true);notice('已撤销上次操作。');}};
+  $('undo').onclick=()=>{if(history.length){const entry=history.pop();restore(entry.save,true,entry);notice('已撤销上次操作。');}};
   $('speed').oninput=()=>{$('speed-value').textContent=$('speed').value+' 代/秒';};
   $('random').onclick=()=>{try{
     if(sparse){
@@ -281,11 +293,11 @@
     $('zoom-value').textContent=sparse?(tile<1?'<1 px':Math.round(tile)+' px'):Math.round(zoom*100)+'%';
     draw();if(sparse)saveSoon();
   }
-  function fitBoard(focus=null,area=null){
+  function fitBoard(focus=null,area=null,cellSize=18){
     endStroke();panX=0;panY=0;
     if(sparse){
       const bounds=area??sparse.bounds(),r=canvas.getBoundingClientRect();
-      if(focus){[originX,originY]=focus;sparseTile=18;}
+      if(focus){[originX,originY]=focus;sparseTile=cellSize;}
       else if(bounds){
         originX=Math.floor((bounds.minX+bounds.maxX)/2);originY=Math.floor((bounds.minY+bounds.maxY)/2);
         sparseTile=Math.min(18,Math.max(1,r.width-40)/(bounds.maxX-bounds.minX+2),Math.max(1,r.height-56)/(bounds.maxY-bounds.minY+2));
@@ -326,7 +338,7 @@
   }catch(error){$('size-error').textContent=error.message;$('size-error').hidden=false;}};
   $('expand').onclick=()=>{try{const r=C.compile(spec()),e=C.expansion(r);$('expansion-info').textContent='共 '+e.total.toLocaleString()+' 条，展示前 '+e.lines.length+' 条（保持原有优先顺序）。';$('expansion-lines').textContent=e.lines.join('\n');$('expansion-dialog').showModal();}catch(e){$('rule-error').textContent=e.message;$('rule-error').hidden=false;}};$('close-dialog').onclick=()=>$('expansion-dialog').close();
   $('export').onclick=()=>{const blob=new Blob([JSON.stringify(snapshot(),null,sparse?0:2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='cell-lab-generation-'+generation+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);notice('已导出当前棋盘与已应用规则'+(dirty?'；未应用的草稿未导出。':'。'));};
-  $('import').onclick=()=>$('file').click();$('file').onchange=async()=>{const f=$('file').files[0];if(!f)return;try{if(f.size>8*1024*1024)throw Error('文件大小不能超过 8 MiB');const raw=JSON.parse(await f.text()),decoded=W.decodeSave(raw);pushHistory();restore(raw,true,decoded);notice('存档已导入。');}catch(e){$('rule-error').textContent='导入失败：'+e.message;$('rule-error').hidden=false;}$('file').value='';};
+  $('import').onclick=()=>$('file').click();$('file').onchange=async()=>{const f=$('file').files[0];if(!f)return;try{if(f.size>96*1024*1024)throw Error('文件大小不能超过 96 MiB');const raw=JSON.parse(await f.text()),decoded=W.decodeSave(raw);pushHistory();restore(raw,true,decoded);notice('存档已导入。');}catch(e){$('rule-error').textContent='导入失败：'+e.message;$('rule-error').hidden=false;}$('file').value='';};
   const patternDialog=$('pattern-dialog'),patternSource=$('pattern-source');
   let patternRead=0;
   function patternError(message){$('pattern-error').textContent=message;$('pattern-error').hidden=false;}
@@ -342,7 +354,7 @@
     const request=++patternRead;
     patternSource.value='';patternSource.disabled=true;$('pattern-place').disabled=true;$('pattern-error').hidden=true;
     try{
-      if(file.size>Pattern.maxBytes)throw Error('RLE 文件需在 2 MiB 以内。');
+      if(file.size>Pattern.maxBytes)throw Error('RLE 文件需在 16 MiB 以内。');
       const text=await file.text();
       if(patternDialog.open&&request===patternRead)patternSource.value=text;
     }catch(error){if(patternDialog.open&&request===patternRead)patternError(error.message);}
@@ -360,28 +372,29 @@
       if(!W.validCoordinate(x0)||!W.validCoordinate(y0))throw Error('左上角坐标须为可精确计算的整数。');
       let useInfinite=Boolean(sparse);
       const bounds={minX:Infinity,minY:Infinity,maxX:-Infinity,maxY:-Infinity};
-      const cells=pattern.cells.map(([x,y,value])=>{
+      const runs=pattern.runs.map(([x,y,length,value])=>{
         x+=x0;y+=y0;
-        if(!W.validCoordinate(x)||!W.validCoordinate(y))throw Error('图案放置后超出坐标范围。');
+        const last=x+length-1;
+        if(!W.validCoordinate(x)||!W.validCoordinate(last)||!W.validCoordinate(y))throw Error('图案放置后超出坐标范围。');
         if(!W.validState(rule,value))throw Error(`图案使用状态 ${value}${pattern.rule?`（${pattern.rule.slice(0,80)}）`:''}，请先应用支持该状态的规则。`);
-        if(!inside(x,y))useInfinite=true;
-        bounds.minX=Math.min(bounds.minX,x);bounds.maxX=Math.max(bounds.maxX,x);
+        if(!inside(x,y)||!inside(last,y))useInfinite=true;
+        bounds.minX=Math.min(bounds.minX,x);bounds.maxX=Math.max(bounds.maxX,last);
         bounds.minY=Math.min(bounds.minY,y);bounds.maxY=Math.max(bounds.maxY,y);
-        return [x,y,value];
+        return [x,y,length,value];
       });
       let next;
       if(useInfinite){
         W.requireDeterministic(rule);next=sparse?sparse.copy():W.fromDense(grid,width);
-        for(const [x,y,value] of cells)next.set(x,y,value);
+        next.overlay(runs);
       }else{
         next=grid.slice();
-        for(const [x,y,value] of cells)next[y*width+x]=value;
+        for(const [x,y,length,value] of runs)next.fill(value,y*width+x,y*width+x+length);
       }
       const switched=useInfinite&&!sparse;
       setRunning(false);endStroke();pushHistory();
       if(useInfinite){sparse=next;grid=[];}else grid=next;
       hoveredCell=null;patternDialog.close();fitBoard(null,bounds);resetCycle();refresh();
-      const message=`已放置 ${cells.length.toLocaleString()} 个元胞，左上角 (${x0}, ${y0})。`;
+      const message=`已放置 ${pattern.population.toLocaleString()} 个元胞，左上角 (${x0}, ${y0})。`;
       worldMessage(message+(switched?' 已切换到无限棋盘。':''));
       $('board').focus({preventScroll:true});$('board').scrollIntoView({block:'nearest'});
     }catch(error){patternError(error.message);}

@@ -4,141 +4,250 @@
 })(globalThis, function (Core) {
   'use strict';
 
-  const maxCells = 100000;
+  const maxRuns = 1000000;
   const maxCoordinate = Math.floor(Number.MAX_SAFE_INTEGER / 4);
   const validCoordinate = value => Number.isSafeInteger(value) && Math.abs(value) <= maxCoordinate;
   const validState = (rule, value) => rule.format === 'expression'
     ? Number.isFinite(value)
     : Number.isInteger(value) && value >= 0 && value < rule.count;
+  const displayCount = value => value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : value;
+  const emptyRow = [];
+  const neighborOffsets = [[0, 0], ...Core.DIRECTIONS];
 
   function requireDeterministic(rule) {
     if (!rule.deterministic) throw Error('随机演化规则请在有限棋盘上运行。');
+  }
+
+  // Each row stores sorted [start, endExclusive, state] runs.
+  function append(row, start, end, value) {
+    const previous = row.at(-1);
+    if (previous?.[1] === start && Object.is(previous[2], value)) previous[1] = end;
+    else row.push([start, end, value]);
+  }
+
+  function firstEndingAfter(row, x) {
+    let low = 0, high = row.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (row[middle][1] <= x) low = middle + 1;
+      else high = middle;
+    }
+    return low;
+  }
+
+  function population(row) {
+    return row.reduce((total, [start, end]) => total + end - start, 0);
+  }
+
+  // A span can be evaluated once: none of its input states changes before the next edge.
+  function sweep(rows, shifts, backgrounds, visit) {
+    const values = [...backgrounds], indices = rows.map(() => 0), active = rows.map(() => false);
+    const edges = rows.map((row, index) => row.length ? row[0][0] + shifts[index] : Infinity);
+    let start = Math.min(...edges);
+    while (start !== Infinity) {
+      let end = Infinity;
+      for (let i = 0; i < rows.length; i++) {
+        while (edges[i] === start) {
+          if (active[i]) { values[i] = backgrounds[i]; indices[i]++; }
+          else values[i] = rows[i][indices[i]][2];
+          active[i] = !active[i];
+          const run = rows[i][indices[i]];
+          edges[i] = run ? run[active[i] ? 1 : 0] + shifts[i] : Infinity;
+        }
+        end = Math.min(end, edges[i]);
+      }
+      if (end === Infinity) break;
+      visit(start, end, values);
+      start = end;
+    }
+  }
+
+  function validateRange(x, y, length) {
+    if (!validCoordinate(x) || !validCoordinate(y) || !Number.isSafeInteger(length) || length < 1 || !validCoordinate(x + length - 1)) {
+      throw Error('坐标或区段长度超出可精确计算的范围。');
+    }
   }
 
   class SparseBoard {
     constructor(background = 0) {
       this.background = background;
       this.rows = new Map();
-      this.size = 0;
+      this.runCount = 0;
+      this.population = 0n;
     }
 
-    get(x, y) { return this.rows.get(y)?.get(x) ?? this.background; }
+    get size() { return displayCount(this.population); }
+
+    get(x, y) {
+      const row = this.rows.get(y);
+      if (!row) return this.background;
+      const run = row[firstEndingAfter(row, x)];
+      return run && run[0] <= x ? run[2] : this.background;
+    }
+
+    replaceRow(y, row) {
+      const old = this.rows.get(y) ?? emptyRow;
+      const count = this.runCount + row.length - old.length;
+      if (count > maxRuns) throw Error('图案区段超过 100 万。请把图案分开运行。');
+      if (row.length) {
+        validateRange(row[0][0], y, row.at(-1)[1] - row[0][0]);
+        this.rows.set(y, row);
+      } else this.rows.delete(y);
+      this.runCount = count;
+      this.population += BigInt(population(row)) - BigInt(population(old));
+    }
+
+    paintRow(y, updates) {
+      const background = this.background, current = this.rows.get(y) ?? emptyRow, row = [];
+      if (!current.length) {
+        for (const [start, end, value] of updates) if (!Object.is(value, background)) append(row, start, end, value);
+      } else {
+        sweep([current, updates], [0, 0], [background, undefined], (start, end, [old, paint]) => {
+          const value = paint ?? old;
+          if (!Object.is(value, background)) append(row, start, end, value);
+        });
+      }
+      this.replaceRow(y, row);
+    }
 
     set(x, y, value) {
-      if (!validCoordinate(x) || !validCoordinate(y)) throw Error('坐标超出可精确计算的范围。');
-      let row = this.rows.get(y);
-      if (Object.is(value, this.background)) {
-        if (row?.delete(x)) {
-          this.size--;
-          if (!row.size) this.rows.delete(y);
-        }
-        return;
-      }
-      if (!row?.has(x)) {
-        if (this.size >= maxCells) throw Error('无限棋盘最多保存 10 万个与背景不同的元胞。');
-        this.size++;
-      }
-      if (!row) { row = new Map(); this.rows.set(y, row); }
-      row.set(x, value);
+      validateRange(x, y, 1);
+      if (!Object.is(this.get(x, y), value)) this.paintRow(y, [[x, x + 1, value]]);
     }
 
-    *entries() {
-      for (const [y, row] of this.rows) for (const [x, value] of row) yield [x, y, value];
+    overlay(records) {
+      const updates = new Map();
+      for (const [x, y, length, value] of records) {
+        validateRange(x, y, length);
+        let row = updates.get(y);
+        if (!row) { row = []; updates.set(y, row); }
+        row.push([x, x + length, value]);
+      }
+      for (const row of updates.values()) {
+        row.sort((a, b) => a[0] - b[0]);
+        for (let i = 1; i < row.length; i++) if (row[i - 1][1] > row[i][0]) throw Error('图案或存档含重复、重叠的坐标。');
+      }
+      for (const [y, row] of updates) this.paintRow(y, row);
+    }
+
+    *runs(left = -Infinity, top = -Infinity, right = Infinity, bottom = Infinity) {
+      for (const [y, row] of this.rows) {
+        if (y < top || y >= bottom) continue;
+        for (let i = firstEndingAfter(row, left); i < row.length && row[i][0] < right; i++) {
+          const [start, end, value] = row[i];
+          yield [Math.max(start, left), y, Math.min(end, right), value];
+        }
+      }
     }
 
     copy() {
       const board = new SparseBoard(this.background);
-      for (const [x, y, value] of this.entries()) board.set(x, y, value);
+      board.rows = new Map(this.rows);
+      board.runCount = this.runCount;
+      board.population = this.population;
       return board;
     }
 
     mapValues(transform) {
       const board = new SparseBoard(transform(this.background));
-      for (const [x, y, value] of this.entries()) board.set(x, y, transform(value));
+      for (const [y, current] of this.rows) {
+        const row = [];
+        for (const [start, end, old] of current) {
+          const value = transform(old);
+          if (!Object.is(value, board.background)) append(row, start, end, value);
+        }
+        board.replaceRow(y, row);
+      }
       return board;
     }
 
     bounds() {
-      if (!this.size) return null;
+      if (!this.runCount) return null;
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const [x, y] of this.entries()) {
-        minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+      for (const [y, row] of this.rows) {
+        minX = Math.min(minX, row[0][0]); maxX = Math.max(maxX, row.at(-1)[1] - 1);
         minY = Math.min(minY, y); maxY = Math.max(maxY, y);
       }
       return { minX, minY, maxX, maxY };
     }
 
     signature() {
-      const cells = [...this.entries()].sort((a, b) => a[1] - b[1] || a[0] - b[0]);
-      const state = new Float64Array(1 + 3 * cells.length);
+      const state = new Float64Array(1 + 4 * this.runCount);
       state[0] = this.background;
-      cells.forEach((cell, index) => state.set(cell, 1 + index * 3));
+      let index = 1;
+      for (const y of [...this.rows.keys()].sort((a, b) => a - b)) {
+        for (const [start, end, value] of this.rows.get(y)) {
+          state[index++] = start;
+          state[index++] = y;
+          state[index++] = end - start;
+          state[index++] = value;
+        }
+      }
       return state;
     }
   }
 
   function fromDense(grid, width) {
     const board = new SparseBoard();
-    grid.forEach((value, index) => {
-      if (!Object.is(value, 0)) board.set(index % width, Math.floor(index / width), value);
-    });
+    for (let start = 0; start < grid.length; start += width) {
+      const row = [];
+      for (let x = 0; x < width; x++) if (!Object.is(grid[start + x], 0)) append(row, x, x + 1, grid[start + x]);
+      board.replaceRow(start / width, row);
+    }
     return board;
   }
 
   function toDense(board, width, height) {
     Core.validateDimensions(width, height);
-    const grid = Array(width * height);
-    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) grid[y * width + x] = board.get(x, y);
+    const grid = Array(width * height).fill(board.background);
+    for (const [start, y, end, value] of board.runs(0, 0, width, height)) grid.fill(value, y * width + start, y * width + end);
     return { grid, width, height };
   }
 
   function step(board, rule) {
     requireDeterministic(rule);
-    const neighborhood = Array(9).fill(board.background);
-    const next = new SparseBoard(Core.transition(rule, neighborhood));
-    const candidates = new Map();
-    // Away from stored cells, all nine inputs are the previous uniform background.
-    for (const [y, row] of board.rows) {
-      for (let yy = y - 1; yy <= y + 1; yy++) {
-        let columns = candidates.get(yy);
-        if (!columns) { columns = new Set(); candidates.set(yy, columns); }
-        for (const x of row.keys()) { columns.add(x - 1); columns.add(x); columns.add(x + 1); }
-      }
-    }
-    for (const [y, columns] of candidates) for (const x of columns) {
-      neighborhood[0] = board.get(x, y);
-      Core.DIRECTIONS.forEach(([dx, dy], index) => { neighborhood[index + 1] = board.get(x + dx, y + dy); });
-      const value = Core.transition(rule, neighborhood);
-      if (!Object.is(value, next.background)) next.set(x, y, value);
+    const backgrounds = Array(9).fill(board.background);
+    const next = new SparseBoard(Core.transition(rule, backgrounds));
+    const candidates = new Set();
+    for (const y of board.rows.keys()) { candidates.add(y - 1); candidates.add(y); candidates.add(y + 1); }
+    const shifts = neighborOffsets.map(([dx]) => -dx);
+    for (const y of candidates) {
+      const rows = neighborOffsets.map(([, dy]) => board.rows.get(y + dy) ?? emptyRow), result = [];
+      sweep(rows, shifts, backgrounds, (start, end, neighbors) => {
+        const value = Core.transition(rule, neighbors);
+        if (!Object.is(value, next.background)) append(result, start, end, value);
+      });
+      if (result.length) next.replaceRow(y, result);
     }
     return next;
   }
 
   function decodeSave(raw) {
-    if (raw?.version !== 2) return { save: Core.validateSave(raw), board: null };
-    const { width, height, generation, boundary, cells, focus } = raw;
+    if (raw?.version !== 2 && raw?.version !== 3) return { save: Core.validateSave(raw), board: null };
+    const { width, height, generation, boundary, focus, cellSize } = raw;
     const background = raw.background === '-0' ? -0 : raw.background;
     Core.validateDimensions(width, height);
     if (raw.world !== 'infinite' || !Number.isSafeInteger(generation) || generation < 0 || !['wrap', 'zero'].includes(boundary)) throw Error('无限棋盘存档无效。');
     const rule = Core.compile(raw.rule);
     requireDeterministic(rule);
-    if (!validState(rule, background) || !Array.isArray(cells) || cells.length > maxCells) throw Error('无限棋盘的背景或元胞数无效。');
+    const legacy = raw.version === 2, records = legacy ? raw.cells : raw.runs;
+    if (!validState(rule, background) || !Array.isArray(records) || records.length > maxRuns) throw Error('无限棋盘的背景或区段数无效。');
     const board = new SparseBoard(background);
-    for (const cell of cells) {
-      if (!Array.isArray(cell) || cell.length !== 3) throw Error('无限棋盘元胞记录无效。');
-      const [x, y, state] = cell, value = state === '-0' ? -0 : state;
+    board.overlay(records.map(record => {
+      if (!Array.isArray(record) || record.length !== (legacy ? 3 : 4)) throw Error('无限棋盘元胞记录无效。');
+      const [x, y] = record, state = record.at(-1), value = state === '-0' ? -0 : state;
       if (!validState(rule, value) || Object.is(value, background)) throw Error('无限棋盘元胞记录无效。');
-      if (board.rows.get(y)?.has(x)) throw Error('存档含重复坐标。');
-      board.set(x, y, value);
-    }
+      return [x, y, legacy ? 1 : record[2], value];
+    }));
     if (focus !== undefined && (!Array.isArray(focus) || focus.length !== 2 || !focus.every(validCoordinate))) throw Error('存档视野坐标无效。');
-    return { save: { width, height, generation, boundary, rule: Core.ruleSpec(rule), focus }, board };
+    if (cellSize !== undefined && (!Number.isFinite(cellSize) || cellSize <= 0 || cellSize > 120.000001)) throw Error('存档视野缩放无效。');
+    return { save: { width, height, generation, boundary, rule: Core.ruleSpec(rule), focus, cellSize }, board };
   }
 
   function encodeBoard(board) {
     const state = value => Object.is(value, -0) ? '-0' : value;
-    return { background: state(board.background), cells: Array.from(board.entries(), ([x, y, value]) => [x, y, state(value)]) };
+    return { background: state(board.background), runs: Array.from(board.runs(), ([x, y, end, value]) => [x, y, end - x, state(value)]) };
   }
 
-  return { SparseBoard, maxCells, maxCoordinate, validCoordinate, validState, requireDeterministic, fromDense, toDense, step, decodeSave, encodeBoard };
+  return { SparseBoard, maxRuns, maxCoordinate, validCoordinate, validState, requireDeterministic, displayCount, fromDense, toDense, step, decodeSave, encodeBoard };
 });

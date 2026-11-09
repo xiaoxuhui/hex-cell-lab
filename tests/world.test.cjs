@@ -10,7 +10,7 @@ const life = Core.compile({ format: 'bs', text: 'B3/S23' });
 test('a glider steps across negative coordinates without wrapping or allocating the intervening space', () => {
   const glider = Pattern.readRle('x = 3, y = 3, rule = B3/S23\nbo$2bo$3o!');
   let board = new World.SparseBoard();
-  for (const [x,y,value] of glider.cells) board.set(x-1000000000,y-1000000000,value);
+  board.overlay(glider.runs.map(([x,y,length,value])=>[x-1000000000,y-1000000000,length,value]));
   for (const x of [1000000000,1000000001]) for (const y of [1000000000,1000000001]) board.set(x,y,1);
   const tracker = new Tracker({ variableLength:true });
   tracker.reset(board.signature(),0);
@@ -19,7 +19,7 @@ test('a glider steps across negative coordinates without wrapping or allocating 
     tracker.observe(board.signature(),generation);
   }
   assert.equal(board.size,9);
-  for (const [x,y] of glider.cells) assert.equal(board.get(x-999999999,y-999999999),1);
+  for (const [x,y,length] of glider.runs) for (let i=0;i<length;i++) assert.equal(board.get(x+i-999999999,y-999999999),1);
   assert.equal(board.get(1000000001,1000000001),1);
   assert.equal(tracker.period,null);
 });
@@ -52,11 +52,13 @@ test('a pulsar repeats on the infinite board even though its population changes'
 
 test('infinite saves keep signed zero, coordinates, and old finite save compatibility', () => {
   const board=new World.SparseBoard();board.set(-5,40000,-0);board.set(8,-4,2);
-  const save={version:2,world:'infinite',width:72,height:48,boundary:'zero',generation:2,rule:{format:'expression',text:'E'},focus:[-5,40000],...World.encodeBoard(board)};
+  const save={version:3,world:'infinite',width:72,height:48,boundary:'zero',generation:2,rule:{format:'expression',text:'E'},focus:[-5,40000],...World.encodeBoard(board)};
   const restored=World.decodeSave(JSON.parse(JSON.stringify(save)));
   assert.deepEqual(restored.board.signature(),board.signature());
   assert.deepEqual(restored.save.focus,[-5,40000]);
-  assert.throws(()=>World.decodeSave({...save,cells:[...save.cells,save.cells[0]]}),/重复坐标/);
+  assert.throws(()=>World.decodeSave({...save,runs:[...save.runs,save.runs[0]]}),/重叠/);
+  const old=World.decodeSave({...save,version:2,cells:[[-5,40000,'-0'],[8,-4,2]]});
+  assert.deepEqual(old.board.signature(),board.signature());
   assert.throws(()=>World.step(board,Core.compile({format:'expression',text:'random([0,1])'})),/随机/);
   assert.equal(World.decodeSave({version:1,width:3,height:3,boundary:'wrap',generation:0,grid:Array(9).fill(0),rule:Core.ruleSpec(life)}).board,null);
 });
@@ -66,7 +68,45 @@ test('extended RLE retains signed positions and state IDs without expanding blan
   const pattern=Pattern.readRle(input);
   assert.deepEqual(pattern.position,[-120,450]);
   assert.equal(pattern.rule,'WireWorld');
-  assert.deepEqual(pattern.cells,[[0,0,1],[2,0,2],[3,0,25],[4,0,255],[4,3,1]]);
-  assert.deepEqual(Pattern.readRle('1000000000bo!').cells,[[1000000000,0,1]]);
-  for(const text of ['2 o!','0o!','o!o','yP!','100001o!','10000000000000000$o!'])assert.throws(()=>Pattern.readRle(text));
+  assert.deepEqual(pattern.runs,[[0,0,1,1],[2,0,1,2],[3,0,1,25],[4,0,1,255],[4,3,1,1]]);
+  assert.deepEqual(Pattern.readRle('1000000000bo!').runs,[[1000000000,0,1,1]]);
+  assert.deepEqual(Pattern.readRle('100001oo!').runs,[[0,0,100002,1]]);
+  for(const text of ['2 o!','0o!','o!o','yP!','10000000000000000$o!'])assert.throws(()=>Pattern.readRle(text));
+});
+
+test('ten million live cells import, evolve and save as short row runs', () => {
+  const pattern=Pattern.readRle('x=1000000,y=10\n'+Array(10).fill('1000000o').join('$')+'!');
+  const board=new World.SparseBoard();board.overlay(pattern.runs);
+  assert.equal(board.size,10000000);
+  assert.equal(board.runCount,10);
+  const next=World.step(board,life);
+  assert.equal(next.size,2000016);
+  assert.equal(next.get(500000,-1),1);
+  assert.equal(next.get(500000,0),0);
+  assert.equal(next.get(-1,3),1);
+  assert.equal(next.get(-1,-1),0);
+  assert.ok(JSON.stringify(World.encodeBoard(next)).length<1000);
+  const duplicate=board.copy();duplicate.set(500000,4,0);
+  assert.equal(board.get(500000,4),1);
+  assert.equal(duplicate.size,9999999);
+  assert.equal(duplicate.get(500001,4),1);
+});
+
+test('interval evolution agrees with cellwise evolution for asymmetric and changing-background rules', () => {
+  const width=25,height=23;
+  const rules=[life,Core.compile({format:'bs',text:'B0/S2'}),Core.compile({format:'expression',text:'(A + 2*F + E) % 3'})];
+  for(const rule of rules){
+    const initial=Array(width*height).fill(0);
+    let rng=12345;
+    for(let y=6;y<17;y++)for(let x=6;x<19;x++){
+      rng=(Math.imul(rng,1664525)+1013904223)>>>0;
+      initial[y*width+x]=(rng>>>28)%(rule.format==='expression'?3:2);
+    }
+    let board=World.fromDense(initial,width),dense=initial;
+    for(let i=0;i<5;i++){
+      dense=Core.step(dense,width,height,rule,'wrap');
+      board=World.step(board,rule);
+      assert.deepEqual(World.toDense(board,width,height).grid,dense);
+    }
+  }
 });
